@@ -18,7 +18,7 @@ const pool = new Pool({
 
 // 1. RUTA DE PRUEBA
 app.get('/', (req, res) => {
-  res.json({ mensaje: "API de Bilane Creek lista 🚀" });
+  res.json({ mensaje: "API de Bilane Creek lista " });
 });
 
 // 2. RUTA DE LOGIN (La que pidió el profesor)
