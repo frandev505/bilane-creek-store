@@ -141,6 +141,51 @@ app.put('/api/productos/:id', async (req, res) => {
   }
 });
 
+// 8. RUTA PARA PROCESAR EL PAGO (CREAR PEDIDO Y DETALLES)
+app.post('/api/pedidos', async (req, res) => {
+  const { id_usuario, total, items } = req.body;
+  
+  // Usamos un "cliente" específico de la piscina para hacer una Transacción
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN'); // Iniciamos la transacción de seguridad
+
+    // 1. Insertamos el registro general en la tabla "pedidos"
+    const pedidoResult = await client.query(
+      "INSERT INTO pedidos (id_usuario, total, estado) VALUES ($1, $2, 'Completado') RETURNING id_pedido",
+      [id_usuario, total]
+    );
+    const id_pedido = pedidoResult.rows[0].id_pedido;
+
+   // 2. Insertamos cada producto del carrito en "detalle_pedidos"
+    for (let item of items) {
+      // Calculamos el subtotal que nos exige la base de datos
+      const subtotal = item.cantidad * item.precio_base;
+
+      await client.query(
+        'INSERT INTO detalle_pedidos (id_pedido, id_variante, cantidad, precio_unitario_historico, subtotal) VALUES ($1, $2, $3, $4, $5)',
+        [
+          id_pedido, 
+          item.id_producto,  // Enviamos el ID del producto hacia la columna id_variante
+          item.cantidad, 
+          item.precio_base,  // Este es el precio_unitario_historico
+          subtotal           // El total por ese producto
+        ]
+      );
+    }
+
+    await client.query('COMMIT'); // Si todo salió bien, guardamos permanentemente
+    res.json({ success: true, id_pedido: id_pedido, mensaje: "Pago procesado con éxito" });
+    
+  } catch (err) {
+    await client.query('ROLLBACK'); // Si algo falla, deshacemos todo para evitar errores en la DB
+    console.error("Error en la transacción del pedido:", err);
+    res.status(500).json({ error: "Error al procesar el pago" });
+  } finally {
+    client.release(); // Soltamos el cliente
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);

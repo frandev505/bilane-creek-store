@@ -55,7 +55,7 @@ function App() {
           /* Lógica para alternar entre catálogo y carrito */
           vistaCliente === 'catalogo' ? 
             <Catalogo /> : 
-            <Carrito volverAlCatalogo={() => setVistaCliente('catalogo')} />
+            <Carrito usuario={usuario} volverAlCatalogo={() => setVistaCliente('catalogo')} />
         )}
       </main>
     </>
