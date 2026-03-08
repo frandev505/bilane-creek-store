@@ -1,64 +1,104 @@
-import { useState } from 'react';
-import Login from './Login';
-import AdminPanel from './AdminPanel';
-import Catalogo from './Catalogo';
-import Carrito from './Carrito'; // Importamos el nuevo componente
-import { useCartStore } from './store/cartStore';
+import Navbar from './components/Navbar';
+import Marquee from "./components/Marquee.jsx";
+import ProductCard from './components/ProductCard';
+import { useProducts } from './hooks/useProducts'; // Nuestro Custom Hook
+import { useCartStore } from './store/cartStore'; // Zustand
 
 function App() {
-  const [usuario, setUsuario] = useState(null);
-  const [vistaCliente, setVistaCliente] = useState('catalogo'); // Estado para controlar qué ve el cliente
+  // Usamos el Custom Hook para traer datos (Código limpio)
+  const { productos, cargando, error } = useProducts();
   
-  const carrito = useCartStore((state) => state.carrito);
-  const totalItemsCarrito = carrito.reduce((total, item) => total + item.cantidad, 0);
+  // Traemos el estado del carrito y sus items desde Zustand
+  const isCartOpen = useCartStore((state) => state.isCartOpen);
+  const toggleCart = useCartStore((state) => state.toggleCart);
+  const cartItems = useCartStore((state) => state.cartItems);
 
-  if (!usuario) {
-    return <Login onLoginSuccess={(user) => setUsuario(user)} />;
-  }
+  const cartTotal = cartItems.reduce((total, item) => total + (item.precio_base * item.cantidad), 0);
 
   return (
-    <>
-      {/* NAVBAR RESPONSIVE */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 30px', backgroundColor: '#000', color: '#fff', flexWrap: 'wrap', gap: '10px' }}>
-        <h1 
-          style={{ margin: 0, fontSize: '22px', cursor: 'pointer' }}
-          onClick={() => setVistaCliente('catalogo')} // Al hacer clic en el logo, vuelve al inicio
-        >
-          Bilane Creek
+    <div className="min-h-screen bg-white text-black font-sans relative">
+      <Navbar /> {/* Ya no pasamos props, Navbar lee Zustand directo */}
+
+      <header className="py-16 px-4 text-center">
+        <h1 className="text-4xl md:text-6xl font-black uppercase mb-4 tracking-tighter">
+          Favourite Threads
         </h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
-          <span>Hola, {usuario.nombre}</span>
-          
-          {usuario.rol === 'cliente' && (
-            <button 
-              onClick={() => setVistaCliente('carrito')}
-              style={{ backgroundColor: '#fff', color: '#000', padding: '8px 15px', borderRadius: '20px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
-            >
-              🛒 Carrito ({totalItemsCarrito})
-            </button>
-          )}
-          
-          <button 
-            onClick={() => setUsuario(null)} 
-            style={{ padding: '8px 15px', backgroundColor: 'transparent', color: '#fff', border: '1px solid #fff', borderRadius: '5px', cursor: 'pointer' }}
-          >
-            Salir
-          </button>
-        </div>
+        <p className="text-gray-600 max-w-xl mx-auto">
+          Premium quality graphic t-shirts with modern, unique designs.
+        </p>
       </header>
 
-      {/* CONTENIDO PRINCIPAL */}
-      <main style={{ padding: '20px', width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
-        {usuario.rol === 'admin' ? (
-          <AdminPanel />
+      <Marquee text="COLLECTIONS" />
+
+      <main className="max-w-7xl mx-auto px-4 py-16">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl font-bold mb-2">Quality Crafted T-Shirts for Every Style</h2>
+          <p className="text-gray-500">Discover Bilane Creek's unique T-Shirt collection.</p>
+        </div>
+
+        {/* Manejo de estados de carga y error */}
+        {error && <p className="text-center text-red-500">Error: {error}</p>}
+        {cargando ? (
+          <p className="text-center text-gray-500 font-bold">Cargando productos...</p>
         ) : (
-          /* Lógica para alternar entre catálogo y carrito */
-          vistaCliente === 'catalogo' ? 
-            <Catalogo /> : 
-            <Carrito usuario={usuario} volverAlCatalogo={() => setVistaCliente('catalogo')} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {productos.length > 0 ? (
+              productos.map((prod) => (
+                <ProductCard key={prod.id_producto} producto={prod} />
+              ))
+            ) : (
+              <p className="col-span-full text-center text-gray-500">No hay productos disponibles.</p>
+            )}
+          </div>
         )}
       </main>
-    </>
+
+      {/* CARRITO LATERAL CON LÓGICA DE ZUSTAND */}
+      {isCartOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/50" onClick={toggleCart} />
+          <div className="relative w-full max-w-md bg-white h-full shadow-xl flex flex-col">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+              <h2 className="font-bold text-lg">Your cart</h2>
+              <button onClick={toggleCart} className="font-bold text-xl">✕</button>
+            </div>
+            
+            <div className="p-4 flex-1 overflow-y-auto">
+              {cartItems.length === 0 ? (
+                <div className="h-full flex flex-col justify-center items-center">
+                  <h3 className="text-xl font-bold mb-4">Your cart is empty!</h3>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {cartItems.map(item => (
+                    <div key={item.id_producto} className="flex justify-between items-center border-b pb-2">
+                      <div>
+                        <p className="font-bold">{item.nombre}</p>
+                        <p className="text-sm text-gray-500">Cant: {item.cantidad} x ${Number(item.precio_base).toFixed(2)}</p>
+                      </div>
+                      <p className="font-bold">${(item.precio_base * item.cantidad).toFixed(2)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Total y Checkout */}
+            {cartItems.length > 0 && (
+              <div className="p-4 border-t bg-gray-50">
+                <div className="flex justify-between font-bold text-lg mb-4">
+                  <span>Total:</span>
+                  <span>${cartTotal.toFixed(2)}</span>
+                </div>
+                <button className="w-full bg-black text-white py-3 font-semibold hover:bg-gray-800">
+                  Ir al Pago (Checkout)
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
