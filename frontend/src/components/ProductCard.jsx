@@ -6,8 +6,10 @@ export default function ProductCard({ producto }) {
   
   const user = useAuthStore((state) => state.user);
   const userId = user ? user.id : 'guest';
+  
+  // Verificamos si el usuario actual es un administrador
+  const isAdmin = user?.rol === 'admin';
 
-  // Si tiene imagen_url guardada en la BD la usa, si no, usa el placeholder por defecto
   const imageUrl = producto.imagen_url 
     ? producto.imagen_url 
     : `https://ui-avatars.com/api/?name=${producto.nombre}&background=random&size=400`;
@@ -26,12 +28,16 @@ export default function ProductCard({ producto }) {
         <p className="text-sm text-gray-500">{producto.categoria}</p>
         <p className="text-gray-900 font-semibold">${Number(producto.precio_base).toFixed(2)}</p>
       </div>
-      <button 
-        onClick={() => addToCart(producto, userId)}
-        className="w-full bg-black text-white py-3 font-semibold hover:bg-gray-800 transition-colors"
-      >
-        Añadir al Carrito
-      </button>
+      
+      {/* NOVEDAD: Si NO es admin (!isAdmin), mostramos el botón. Si es admin, no renderiza nada. */}
+      {!isAdmin && (
+        <button 
+          onClick={() => addToCart(producto, userId)}
+          className="w-full bg-black text-white py-3 font-semibold hover:bg-gray-800 transition-colors"
+        >
+          Añadir al Carrito
+        </button>
+      )}
     </div>
   );
 }

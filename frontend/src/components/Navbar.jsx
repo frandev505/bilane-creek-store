@@ -11,6 +11,9 @@ export default function Navbar() {
   const user = useAuthStore((state) => state.user);
   const userId = user ? user.id : 'guest';
 
+  // NOVEDAD: Verificamos si el usuario actual es un administrador
+  const isAdmin = user?.rol === 'admin';
+
   // Obtenemos solo el carrito del usuario actual
   const cartItems = carritosPorUsuario[userId] || [];
   const totalItems = cartItems.reduce((total, item) => total + item.cantidad, 0);
@@ -31,14 +34,17 @@ export default function Navbar() {
           <User className="w-6 h-6" />
         </Link>
         
-        <button onClick={toggleCart} className="relative flex items-center gap-1">
-          <ShoppingCart className="w-6 h-6" />
-          {totalItems > 0 && (
-            <span className="bg-black text-white text-xs rounded-full h-5 w-5 flex items-center justify-center absolute -top-2 -right-2">
-              {totalItems}
-            </span>
-          )}
-        </button>
+        {/* NOVEDAD: Si NO es admin (!isAdmin), dibuja el carrito. Si es admin, desaparece. */}
+        {!isAdmin && (
+          <button onClick={toggleCart} className="relative flex items-center gap-1">
+            <ShoppingCart className="w-6 h-6" />
+            {totalItems > 0 && (
+              <span className="bg-black text-white text-xs rounded-full h-5 w-5 flex items-center justify-center absolute -top-2 -right-2">
+                {totalItems}
+              </span>
+            )}
+          </button>
+        )}
       </div>
     </nav>
   );
