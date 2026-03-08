@@ -1,12 +1,11 @@
-import { ShoppingCart, Menu } from 'lucide-react';
-import { useCartStore } from '../store/cartStore'; // Importamos Zustand
+// Importa User y Link
+import { ShoppingCart, Menu, User } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useCartStore } from '../store/cartStore';
 
 export default function Navbar() {
-  // Extraemos lo que necesitamos del store global
   const toggleCart = useCartStore((state) => state.toggleCart);
   const cartItems = useCartStore((state) => state.cartItems);
-
-  // Calculamos la cantidad total de artículos
   const totalItems = cartItems.reduce((total, item) => total + item.cantidad, 0);
 
   return (
@@ -14,17 +13,21 @@ export default function Navbar() {
       <button className="md:hidden"><Menu /></button>
       
       <div className="hidden md:flex gap-6 font-semibold text-sm">
-        <a href="#" className="hover:text-gray-600">About Us</a>
-        <a href="#" className="hover:text-gray-600">Features</a>
+        <Link to="/" className="hover:text-gray-600">Home</Link>
         <a href="#" className="hover:text-gray-600">Shop</a>
-        <a href="#" className="hover:text-gray-600">Contact</a>
       </div>
       
-      <div className="text-2xl font-black tracking-tighter">BILANE CREEK</div>
+      {/* Enlace al Home */}
+      <Link to="/" className="text-2xl font-black tracking-tighter">BILANE CREEK</Link>
       
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-6">
+        {/* Enlace a My Account */}
+        <Link to="/my-account" className="hover:text-gray-600">
+          <User className="w-6 h-6" />
+        </Link>
+        
         <button onClick={toggleCart} className="relative flex items-center gap-1">
-          <ShoppingCart />
+          <ShoppingCart className="w-6 h-6" />
           <span className="bg-black text-white text-xs rounded-full h-5 w-5 flex items-center justify-center absolute -top-2 -right-2">
             {totalItems}
           </span>
