@@ -1,11 +1,18 @@
-// Importa User y Link
 import { ShoppingCart, Menu, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useCartStore } from '../store/cartStore';
+import { useAuthStore } from '../store/authStore';
 
 export default function Navbar() {
   const toggleCart = useCartStore((state) => state.toggleCart);
-  const cartItems = useCartStore((state) => state.cartItems);
+  const carritosPorUsuario = useCartStore((state) => state.carritosPorUsuario);
+  
+  // Identificamos al usuario activo
+  const user = useAuthStore((state) => state.user);
+  const userId = user ? user.id : 'guest';
+
+  // Obtenemos solo el carrito del usuario actual
+  const cartItems = carritosPorUsuario[userId] || [];
   const totalItems = cartItems.reduce((total, item) => total + item.cantidad, 0);
 
   return (
@@ -17,20 +24,20 @@ export default function Navbar() {
         <a href="#" className="hover:text-gray-600">Shop</a>
       </div>
       
-      {/* Enlace al Home */}
       <Link to="/" className="text-2xl font-black tracking-tighter">BILANE CREEK</Link>
       
       <div className="flex items-center gap-6">
-        {/* Enlace a My Account */}
         <Link to="/my-account" className="hover:text-gray-600">
           <User className="w-6 h-6" />
         </Link>
         
         <button onClick={toggleCart} className="relative flex items-center gap-1">
           <ShoppingCart className="w-6 h-6" />
-          <span className="bg-black text-white text-xs rounded-full h-5 w-5 flex items-center justify-center absolute -top-2 -right-2">
-            {totalItems}
-          </span>
+          {totalItems > 0 && (
+            <span className="bg-black text-white text-xs rounded-full h-5 w-5 flex items-center justify-center absolute -top-2 -right-2">
+              {totalItems}
+            </span>
+          )}
         </button>
       </div>
     </nav>

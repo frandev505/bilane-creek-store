@@ -1,35 +1,64 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
-// Zustand crea un hook global que podemos usar en cualquier componente
-export const useCartStore = create((set) => ({
-  // Estado inicial
-  isCartOpen: false,
-  cartItems: [],
+export const useCartStore = create(
+  persist(
+    (set, get) => ({
+      isCartOpen: false,
+      carritosPorUsuario: {}, 
 
-  // Acciones para modificar el estado
-  toggleCart: () => set((state) => ({ isCartOpen: !state.isCartOpen })),
-  
-  addToCart: (producto) => set((state) => {
-    // Verificamos si el producto ya está en el carrito
-    const existe = state.cartItems.find((item) => item.id_producto === producto.id_producto);
-    
-    if (existe) {
-      // Si existe, le sumamos 1 a la cantidad
-      return {
-        cartItems: state.cartItems.map((item) =>
-          item.id_producto === producto.id_producto
-            ? { ...item, cantidad: item.cantidad + 1 }
-            : item
-        ),
-      };
+      toggleCart: () => set((state) => ({ isCartOpen: !state.isCartOpen })),
+
+      addToCart: (producto, userId = 'guest') => set((state) => {
+        const carritoActual = state.carritosPorUsuario[userId] || [];
+        const existe = carritoActual.find((item) => item.id_producto === producto.id_producto);
+        
+        let nuevoCarrito;
+        if (existe) {
+          nuevoCarrito = carritoActual.map((item) =>
+            item.id_producto === producto.id_producto
+              ? { ...item, cantidad: item.cantidad + 1 }
+              : item
+          );
+        } else {
+          nuevoCarrito = [...carritoActual, { ...producto, cantidad: 1 }];
+        }
+
+        return {
+          carritosPorUsuario: {
+            ...state.carritosPorUsuario,
+            [userId]: nuevoCarrito
+          }
+        };
+      }),
+
+      removeFromCart: (id_producto, userId = 'guest') => set((state) => {
+        const carritoActual = state.carritosPorUsuario[userId] || [];
+        return {
+          carritosPorUsuario: {
+            ...state.carritosPorUsuario,
+            [userId]: carritoActual.filter((item) => item.id_producto !== id_producto)
+          }
+        };
+      }),
+
+      clearCart: (userId = 'guest') => set((state) => ({
+         carritosPorUsuario: {
+           ...state.carritosPorUsuario,
+           [userId]: []
+         }
+      }))
+    }),
+    {
+      name: 'bilane-cart-storage',
+      // NOVEDAD: partialize decide QUÉ se guarda en el LocalStorage
+      partialize: (state) => ({
+        ...state,
+        // Filtramos para guardar TODOS los carritos MENOS el de 'guest'
+        carritosPorUsuario: Object.fromEntries(
+          Object.entries(state.carritosPorUsuario).filter(([key]) => key !== 'guest')
+        )
+      }),
     }
-    // Si no existe, lo agregamos con cantidad 1
-    return { cartItems: [...state.cartItems, { ...producto, cantidad: 1 }] };
-  }),
-
-  removeFromCart: (id_producto) => set((state) => ({
-    cartItems: state.cartItems.filter((item) => item.id_producto !== id_producto)
-  })),
-
-  clearCart: () => set({ cartItems: [] })
-}));
+  )
+);
