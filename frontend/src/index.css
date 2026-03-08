@@ -1,3 +1,24 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Animación para la cinta infinita (Marquee) */
+@keyframes scrollText {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: scrollText 15s linear infinite;
+}
+
+/* Pausar la animación si el usuario pone el mouse encima (opcional pero elegante) */
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
