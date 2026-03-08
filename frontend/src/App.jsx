@@ -12,28 +12,49 @@ function Home() {
   
   return (
     <>
-      <header className="py-16 px-4 text-center">
-        <h1 className="text-4xl md:text-6xl font-black uppercase mb-4 tracking-tighter">
-          Favourite Threads
-        </h1>
-        <p className="text-gray-600 max-w-xl mx-auto">
-          Premium quality graphic t-shirts with modern, unique designs.
-        </p>
+      {/* 1. HERO SECTION CON IMAGEN DE FONDO */}
+      {/* Puedes cambiar la URL de la imagen por una de tu marca */}
+      <header className="relative w-full h-[70vh] flex items-center justify-center text-center">
+        {/* Capa oscura para que el texto se lea bien sobre la imagen */}
+        <div className="absolute inset-0 bg-black/40 z-10"></div>
+        
+        {/* Imagen de fondo (Asegúrate de poner una imagen real de Bilane Creek aquí) */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center z-0"
+          style={{ backgroundImage: "url('/src/assets/sweter-think-less-copia-scaled-2560x1188.jpg')" }}
+        ></div>
+
+        <div className="relative z-20 px-4 text-white">
+          <h1 className="text-5xl md:text-8xl font-black uppercase mb-4 tracking-tighter drop-shadow-lg">
+            Favourite Threads
+          </h1>
+          <p className="text-lg md:text-xl max-w-2xl mx-auto font-medium drop-shadow-md">
+            Premium quality graphic t-shirts with modern, unique designs.
+          </p>
+          <button className="mt-8 bg-white text-black px-8 py-3 font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors">
+            Shop New Arrivals
+          </button>
+        </div>
       </header>
 
-      <Marquee text="COLLECTIONS" />
+      {/* 2. CINTA ANIMADA (MARQUEE) */}
+      {/* Aquí le pasas los colores de Tailwind que quieras. Ej: bg-yellow-400 text-black */}
+      <Marquee text="COLLECTIONS" bgColor="bg-black" textColor="text-white" />
 
-      <main className="max-w-7xl mx-auto px-4 py-16">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold mb-2">Quality Crafted T-Shirts for Every Style</h2>
-          <p className="text-gray-500">Discover Bilane Creek's unique T-Shirt collection.</p>
+      {/* 3. CATÁLOGO */}
+      <main className="max-w-7xl mx-auto px-4 py-20">
+        <div className="text-center mb-16">
+          <h2 className="text-4xl font-black uppercase mb-2 tracking-tight">Latest Drops</h2>
+          <p className="text-gray-500 text-lg">Quality Crafted T-Shirts for Every Style.</p>
         </div>
 
-        {error && <p className="text-center text-red-500">Error: {error}</p>}
+        {error && <p className="text-center text-red-500 font-bold p-4 bg-red-50 rounded">Error: {error}</p>}
         {cargando ? (
-          <p className="text-center text-gray-500 font-bold">Cargando productos...</p>
+          <div className="flex justify-center items-center h-40">
+            <p className="text-xl font-bold animate-pulse">Cargando productos...</p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12">
             {productos.length > 0 ? (
               productos.map((prod) => (
                 <ProductCard key={prod.id_producto} producto={prod} />
@@ -45,21 +66,21 @@ function Home() {
         )}
       </main>
 
-      {/* CTA BOTTOM */}
-      <section className="bg-gray-100 py-20 text-center px-4">
-        <h2 className="text-3xl font-bold mb-4">Elevate Your Style with Bilane Creek</h2>
-        <button className="bg-black text-white px-8 py-4 font-bold tracking-widest uppercase hover:bg-gray-800">
+      {/* 4. CTA BOTTOM */}
+      <section className="bg-gray-100 py-24 text-center px-4 border-t border-gray-200">
+        <h2 className="text-4xl font-black uppercase mb-6 tracking-tight">Elevate Your Style</h2>
+        <button className="bg-black text-white px-10 py-4 font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors">
           Discover Now
         </button>
       </section>
 
       {/* FOOTER */}
-      <footer className="p-8 border-t text-center text-sm font-semibold flex flex-col md:flex-row justify-between items-center">
-        <p>© 2026 Bilane Creek. All rights reserved.</p>
-        <div className="flex gap-4 mt-4 md:mt-0">
-          <a href="#" className="hover:text-gray-500">Instagram</a>
-          <a href="#" className="hover:text-gray-500">Facebook</a>
-          <a href="#" className="hover:text-gray-500">X</a>
+      <footer className="bg-black text-white p-10 flex flex-col md:flex-row justify-between items-center text-sm font-semibold">
+        <p className="mb-4 md:mb-0">© 2026 Bilane Creek. All rights reserved.</p>
+        <div className="flex gap-6 uppercase tracking-wider">
+          <a href="#" className="hover:text-gray-400 transition-colors">Instagram</a>
+          <a href="#" className="hover:text-gray-400 transition-colors">Facebook</a>
+          <a href="#" className="hover:text-gray-400 transition-colors">X</a>
         </div>
       </footer>
     </>
