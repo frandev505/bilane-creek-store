@@ -143,6 +143,129 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
+// ==========================================
+// RUTAS PARA GESTIÓN DE USUARIOS (ADMIN)
+// ==========================================
+
+// 1. Obtener todos los usuarios
+app.get('/api/usuarios', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id_usuario, nombre, email, rol FROM usuarios ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error al obtener usuarios" });
+  }
+});
+
+// 2. Crear un nuevo usuario desde el panel
+app.post('/api/usuarios', async (req, res) => {
+  const { nombre, email, password, rol } = req.body;
+  try {
+    const userExists = await pool.query('SELECT email FROM usuarios WHERE email = $1', [email]);
+    if (userExists.rows.length > 0) return res.status(400).json({ error: "Este correo ya está registrado" });
+
+    const result = await pool.query(
+      'INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES ($1, $2, $3, $4) RETURNING id_usuario, nombre, email, rol',
+      [nombre, email, password, rol]
+    );
+    res.json({ success: true, usuario: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: "Error al crear usuario" });
+  }
+});
+
+// 3. Actualizar un usuario existente (Nombre, Email, Rol)
+app.put('/api/usuarios/:id', async (req, res) => {
+  const { id } = req.params;
+  const { nombre, email, rol } = req.body;
+  
+  try {
+    // Protección del último admin
+    if (rol !== 'admin') {
+      const userToChange = await pool.query("SELECT rol FROM usuarios WHERE id_usuario = $1", [id]);
+      if (userToChange.rows.length > 0 && userToChange.rows[0].rol === 'admin') {
+        const adminCount = await pool.query("SELECT COUNT(*) FROM usuarios WHERE rol = 'admin'");
+        if (parseInt(adminCount.rows[0].count) <= 1) {
+          return res.status(400).json({ error: "Operación denegada: Debe existir al menos un administrador." });
+        }
+      }
+    }
+
+    const result = await pool.query(
+      'UPDATE usuarios SET nombre = $1, email = $2, rol = $3 WHERE id_usuario = $4 RETURNING id_usuario, nombre, email, rol',
+      [nombre, email, rol, id]
+    );
+    res.json({ success: true, usuario: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: "Error al actualizar el usuario" });
+  }
+});
+
+// 4. Eliminar un usuario
+app.delete('/api/usuarios/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const userToDelete = await pool.query("SELECT rol FROM usuarios WHERE id_usuario = $1", [id]);
+    if (userToDelete.rows.length === 0) return res.status(404).json({ error: "Usuario no encontrado" });
+
+    if (userToDelete.rows[0].rol === 'admin') {
+      const adminCount = await pool.query("SELECT COUNT(*) FROM usuarios WHERE rol = 'admin'");
+      if (parseInt(adminCount.rows[0].count) <= 1) {
+        return res.status(400).json({ error: "Operación denegada: No puedes eliminar al último administrador." });
+      }
+    }
+
+    await pool.query('DELETE FROM usuarios WHERE id_usuario = $1', [id]);
+    res.json({ success: true, mensaje: "Usuario eliminado" });
+  } catch (err) {
+    res.status(500).json({ error: "Error al eliminar usuario" });
+  }
+});
+
+// 5. Resetear contraseña de un usuario a 'pass123'
+app.put('/api/usuarios/:id/reset-password', async (req, res) => {
+  const { id } = req.params;
+  const { requesterRole } = req.body;
+
+  // Verificación de seguridad en el backend
+  if (requesterRole !== 'admin' && requesterRole !== 'gerente') {
+    return res.status(403).json({ error: "No tienes permiso para realizar esta acción." });
+  }
+
+  try {
+    await pool.query(
+      "UPDATE usuarios SET password_hash = 'pass123' WHERE id_usuario = $1",
+      [id]
+    );
+    res.json({ success: true, mensaje: "Contraseña reseteada exitosamente" });
+  } catch (err) {
+    res.status(500).json({ error: "Error al resetear la contraseña" });
+  }
+});
+
+// 6. Cambiar contraseña por el propio usuario (requiere estar logueado)
+app.put('/api/usuarios/:id/cambiar-password', async (req, res) => {
+  const { id } = req.params;
+  const { nuevaPassword } = req.body;
+
+  try {
+    /* NOTA: Si estás usando bcrypt para encriptar contraseñas (muy recomendado), 
+      debes hashear la contraseña aquí antes de guardarla, así:
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(nuevaPassword, salt);
+      Y usar 'hashedPassword' en el query en lugar de 'nuevaPassword'.
+    */
+
+    await pool.query(
+      "UPDATE usuarios SET password_hash = $1 WHERE id_usuario = $2",
+      [nuevaPassword, id] 
+    );
+    res.json({ success: true, mensaje: "Contraseña actualizada exitosamente" });
+  } catch (err) {
+    res.status(500).json({ error: "Error al actualizar la contraseña" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });

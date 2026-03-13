@@ -3,6 +3,7 @@ import Navbar from './components/Navbar';
 import Marquee from './components/Marquee';
 import ProductCard from './components/ProductCard';
 import MyAccount from './pages/MyAccount';
+import AdminPanel from './components/AdminPanel'; // <-- NOVEDAD 1: Importamos el panel
 import { useProducts } from './hooks/useProducts'; 
 import { useCartStore } from './store/cartStore'; 
 import { useAuthStore } from './store/authStore';
@@ -101,6 +102,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/my-account" element={<MyAccount />} />
+          <Route path="/admin" element={<AdminPanel />} /> {/* <-- NOVEDAD 2: Agregamos la ruta */}
         </Routes>
 
         {/* CARRITO LATERAL */}
