@@ -51,7 +51,7 @@ export const useCartStore = create(
     }),
     {
       name: 'bilane-cart-storage',
-      // NOVEDAD: partialize decide QUÉ se guarda en el LocalStorage
+      // AQUÍ ESTÁ LA CLAVE: partialize decide qué va al LocalStorage permanentemente
       partialize: (state) => ({
         ...state,
         // Filtramos para guardar TODOS los carritos MENOS el de 'guest'

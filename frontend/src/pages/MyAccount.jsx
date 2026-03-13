@@ -33,9 +33,10 @@ export default function MyAccount() {
       const data = await response.json();
       
       if (response.ok) {
-        login(data.usuario);
-        // NOVEDAD: Vaciamos el carrito de invitado al iniciar sesión
-        useCartStore.getState().clearCart('guest');
+      login(data.usuario);
+  
+       // RESTAURADO: Vaciamos el carrito de invitado al iniciar sesión
+      useCartStore.getState().clearCart('guest');
       } else {
         setLogError(data.error || 'Credenciales inválidas');
       }
