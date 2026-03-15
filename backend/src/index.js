@@ -138,10 +138,17 @@ app.post('/api/pedidos', async (req, res) => {
   }
 });
 
-// REGISTRO FRONTEND (MODIFICADO CON BCRYPT)
+// REGISTRO FRONTEND (MODIFICADO CON BCRYPT Y VALIDACIÓN DE LETRAS)
 app.post('/api/register', async (req, res) => {
   const { nombre, email, password } = req.body;
   try {
+    // --- VALIDACIÓN DE NOMBRE (Solo letras y espacios) ---
+    const regexLetras = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/;
+    if (!regexLetras.test(nombre)) {
+      return res.status(400).json({ error: "El nombre solo puede contener letras y espacios" });
+    }
+    // -----------------------------------------------------
+
     const userExists = await pool.query('SELECT email FROM usuarios WHERE email = $1', [email]);
     if (userExists.rows.length > 0) return res.status(400).json({ error: "Este correo ya está registrado" });
 
@@ -172,10 +179,17 @@ app.get('/api/usuarios', async (req, res) => {
   }
 });
 
-// 2. Crear un nuevo usuario desde el panel (MODIFICADO CON BCRYPT)
+// 2. Crear un nuevo usuario desde el panel (MODIFICADO CON BCRYPT Y VALIDACIÓN DE LETRAS)
 app.post('/api/usuarios', async (req, res) => {
   const { nombre, email, password, rol } = req.body;
   try {
+    // --- VALIDACIÓN DE NOMBRE (Solo letras y espacios) ---
+    const regexLetras = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/;
+    if (!regexLetras.test(nombre)) {
+      return res.status(400).json({ error: "El nombre solo puede contener letras y espacios" });
+    }
+    // -----------------------------------------------------
+
     const userExists = await pool.query('SELECT email FROM usuarios WHERE email = $1', [email]);
     if (userExists.rows.length > 0) return res.status(400).json({ error: "Este correo ya está registrado" });
 
@@ -197,6 +211,13 @@ app.put('/api/usuarios/:id', async (req, res) => {
   const { nombre, email, rol } = req.body;
   
   try {
+    // --- VALIDACIÓN DE NOMBRE (Solo letras y espacios) ---
+    const regexLetras = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/;
+    if (!regexLetras.test(nombre)) {
+      return res.status(400).json({ error: "El nombre solo puede contener letras y espacios" });
+    }
+    // -----------------------------------------------------
+
     if (rol !== 'admin') {
       const userToChange = await pool.query("SELECT rol FROM usuarios WHERE id_usuario = $1", [id]);
       if (userToChange.rows.length > 0 && userToChange.rows[0].rol === 'admin') {
