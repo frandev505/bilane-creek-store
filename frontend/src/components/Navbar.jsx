@@ -3,7 +3,7 @@ import { ShoppingCart, Menu, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useCartStore } from '../store/cartStore';
 import { useAuthStore } from '../store/authStore';
-import CambiarPassword from './CambiarPassword'; // <-- Importamos tu nuevo componente
+import CambiarPassword from './CambiarPassword';
 
 export default function Navbar() {
   const toggleCart = useCartStore((state) => state.toggleCart);
@@ -13,11 +13,12 @@ export default function Navbar() {
   const user = useAuthStore((state) => state.user);
   const userId = user ? user.id : 'guest';
   
-  // Traemos la función de cerrar sesión (ajusta el nombre si en tu store se llama diferente)
+  // Traemos la función de cerrar sesión
   const logout = useAuthStore((state) => state.logout);
 
-  // Verificamos si el usuario actual es un administrador o gerente
+  // Verificamos los roles del usuario actual
   const isAdmin = user?.rol === 'admin' || user?.rol === 'gerente';
+  const isAuditor = user?.rol === 'auditor'; // <-- NUEVO: Identificamos al auditor
 
   // Obtenemos solo el carrito del usuario actual
   const cartItems = carritosPorUsuario[userId] || [];
@@ -58,7 +59,7 @@ export default function Navbar() {
               </Link>
             )}
 
-            {/* MENÚ DESPLEGABLE (Solo visible si hay usuario y se hizo clic) */}
+            {/* MENÚ DESPLEGABLE */}
             {user && menuAbierto && (
               <div className="absolute right-0 mt-3 w-56 bg-white rounded-md shadow-xl text-black border overflow-hidden z-50">
                 <div className="p-4 border-b bg-gray-50">
@@ -71,7 +72,7 @@ export default function Navbar() {
                   <button 
                     onClick={() => {
                       setModalPasswordAbierto(true);
-                      setMenuAbierto(false); // Cerramos el menú
+                      setMenuAbierto(false);
                     }}
                     className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition"
                   >
@@ -86,6 +87,17 @@ export default function Navbar() {
                       className="block px-4 py-2 text-sm hover:bg-gray-100 transition text-blue-600 font-semibold"
                     >
                       Panel de Administración
+                    </Link>
+                  )}
+
+                  {/* NUEVO: Acceso rápido al Panel de Auditoría (solo Auditor) */}
+                  {isAuditor && (
+                    <Link 
+                      to="/auditor" 
+                      onClick={() => setMenuAbierto(false)}
+                      className="block px-4 py-2 text-sm hover:bg-gray-100 transition text-indigo-900 font-semibold"
+                    >
+                      Panel de Auditoría
                     </Link>
                   )}
                   
@@ -105,7 +117,8 @@ export default function Navbar() {
           </div>
           
           {/* ================= ZONA DEL CARRITO ================= */}
-          {!isAdmin && (
+          {/* Ocultamos el carrito tanto para admin, gerente COMO PARA AUDITOR */}
+          {!isAdmin && !isAuditor && (
             <button onClick={toggleCart} className="relative flex items-center gap-1">
               <ShoppingCart className="w-6 h-6" />
               {totalItems > 0 && (
@@ -122,7 +135,6 @@ export default function Navbar() {
       {modalPasswordAbierto && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-md relative animate-in fade-in zoom-in duration-200">
-            {/* Botón X para cerrar */}
             <button 
               onClick={() => setModalPasswordAbierto(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-black transition text-2xl font-bold z-10 leading-none"

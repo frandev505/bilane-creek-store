@@ -3,7 +3,8 @@ import Navbar from './components/Navbar';
 import Marquee from './components/Marquee';
 import ProductCard from './components/ProductCard';
 import MyAccount from './pages/MyAccount';
-import AdminPanel from './components/AdminPanel'; // <-- NOVEDAD 1: Importamos el panel
+import AdminPanel from './components/AdminPanel'; 
+import AuditorPanel from './components/AuditorPanel'; // <-- NOVEDAD 1: Importamos el panel del auditor
 import { useProducts } from './hooks/useProducts'; 
 import { useCartStore } from './store/cartStore'; 
 import { useAuthStore } from './store/authStore';
@@ -102,7 +103,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/my-account" element={<MyAccount />} />
-          <Route path="/admin" element={<AdminPanel />} /> {/* <-- NOVEDAD 2: Agregamos la ruta */}
+          <Route path="/admin" element={<AdminPanel />} />
+          <Route path="/auditor" element={<AuditorPanel />} /> {/* <-- NOVEDAD 2: Agregamos la ruta del auditor */}
         </Routes>
 
         {/* CARRITO LATERAL */}

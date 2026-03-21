@@ -1,33 +1,136 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
+// 1. IMPORTACIONES CORREGIDAS PARA EL PDF 👇
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable'; 
+
+// 2. CENTRALIZAMOS LA URL BASE DE LA API
+const API_URL = 'http://localhost:3000/api';
 
 export default function AdminPanel() {
   const currentUser = useAuthStore(state => state.user);
   const [activeTab, setActiveTab] = useState('productos');
 
-  // Listas de datos
+  // ==========================================
+  // ESTADOS GLOBALES
+  // ==========================================
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
+  const [logs, setLogs] = useState([]);
   
-  // Formulario de Productos
+  // Estados para Formularios
   const [formData, setFormData] = useState({ id_producto: null, nombre: '', precio_base: '', id_categoria: '', imagen_url: '' });
   const [isEditing, setIsEditing] = useState(false);
 
-  // Formulario de Usuarios
   const [userFormData, setUserFormData] = useState({ id_usuario: null, nombre: '', email: '', password: '', rol: 'cliente' });
   const [isUserEditing, setIsUserEditing] = useState(false);
 
   const rolesDisponibles = ['admin', 'gerente', 'auditor', 'cliente'];
 
-  // Cargar datos iniciales
+  // ==========================================
+  // CARGA DE DATOS (FETCH)
+  // ==========================================
+  const cargarLogs = async () => {
+    try {
+      const res = await fetch(`${API_URL}/auditoria`);
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data);
+      }
+    } catch (error) {
+      console.error("Error cargando auditoría:", error);
+    }
+  };
+
   useEffect(() => {
+    // Solo cargamos si es admin o gerente
     if (currentUser?.rol === 'admin' || currentUser?.rol === 'gerente') {
-      fetch('http://localhost:3000/api/productos?admin=true').then(res => res.json()).then(setProductos);
-      fetch('http://localhost:3000/api/categorias').then(res => res.json()).then(setCategorias);
-      fetch('http://localhost:3000/api/usuarios').then(res => res.json()).then(setUsuarios);
+      fetch(`${API_URL}/productos?admin=true`).then(res => res.json()).then(setProductos);
+      fetch(`${API_URL}/categorias`).then(res => res.json()).then(setCategorias);
+      fetch(`${API_URL}/usuarios`).then(res => res.json()).then(setUsuarios);
+      cargarLogs();
     }
   }, [currentUser]);
+
+  // ==========================================
+  // EXPORTAR A PDF CORREGIDO 📄
+  // ==========================================
+  const exportarPDF = () => {
+    try {
+      const doc = new jsPDF();
+      const fechaActual = new Date().toLocaleString();
+      const autor = currentUser?.nombre || 'Administrador';
+      doc.setFontSize(18);
+
+      if (activeTab === 'productos') {
+        if (productos.length === 0) return alert("No hay productos para exportar.");
+        
+        doc.text("Reporte de Inventario - Admin", 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Generado el: ${fechaActual} por ${autor}`, 14, 30);
+        
+        const columnas = ["Nombre", "Categoría", "Precio Base", "Estado"];
+        const filas = productos.map(p => [
+          p.nombre, 
+          p.categoria, 
+          `$${Number(p.precio_base).toFixed(2)}`, 
+          p.activo ? 'Activo' : 'Inactivo'
+        ]);
+        
+        // CORRECCIÓN AQUÍ 👇
+        autoTable(doc, { 
+          startY: 36, head: [columnas], body: filas, theme: 'striped', headStyles: { fillColor: [0, 0, 0] } 
+        });
+        doc.save(`Admin_Inventario_${new Date().toISOString().split('T')[0]}.pdf`);
+
+      } else if (activeTab === 'usuarios') {
+        if (usuarios.length === 0) return alert("No hay usuarios para exportar.");
+        
+        doc.text("Directorio de Usuarios - Admin", 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Generado el: ${fechaActual} por ${autor}`, 14, 30);
+        
+        const columnas = ["Nombre", "Email", "Rol", "Estado"];
+        const filas = usuarios.map(u => [
+          u.nombre, 
+          u.email, 
+          u.rol.toUpperCase(), 
+          u.activo ? 'Activo' : 'Inactivo'
+        ]);
+        
+        // CORRECCIÓN AQUÍ 👇
+        autoTable(doc, { 
+          startY: 36, head: [columnas], body: filas, theme: 'striped', headStyles: { fillColor: [0, 0, 0] } 
+        });
+        doc.save(`Admin_Usuarios_${new Date().toISOString().split('T')[0]}.pdf`);
+
+      } else if (activeTab === 'auditoria') {
+        if (logs.length === 0) return alert("No hay registros para exportar.");
+        
+        doc.text("Registro de Actividad (Logs) - Admin", 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Generado el: ${fechaActual} por ${autor}`, 14, 30);
+        
+        const columnas = ["Fecha", "Autor", "Acción", "Detalles"];
+        const filas = logs.map(log => [
+          new Date(log.fecha).toLocaleString(),
+          `${log.autor || 'Sistema'}\n(${log.autor_email || 'N/A'})`,
+          log.accion,
+          log.detalles
+        ]);
+        
+        // CORRECCIÓN AQUÍ 👇
+        autoTable(doc, { 
+          startY: 36, head: [columnas], body: filas, theme: 'striped', headStyles: { fillColor: [31, 41, 55] }, styles: { fontSize: 8 } 
+        });
+        doc.save(`Admin_Auditoria_${new Date().toISOString().split('T')[0]}.pdf`);
+      }
+    } catch (error) {
+      console.error("Error al exportar PDF:", error);
+      alert("Hubo un problema al generar el PDF. Revisa la consola.");
+    }
+  };
 
   // ==========================================
   // SEGURIDAD: PROTECCIÓN DE RUTA
@@ -42,13 +145,13 @@ export default function AdminPanel() {
   }
 
   // ==========================================
-  // FUNCIONES DE PRODUCTOS
+  // LOGICA: PRODUCTOS
   // ==========================================
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleProductSubmit = async (e) => {
     e.preventDefault();
-    const url = isEditing ? `http://localhost:3000/api/productos/${formData.id_producto}` : 'http://localhost:3000/api/productos';
+    const url = isEditing ? `${API_URL}/productos/${formData.id_producto}` : `${API_URL}/productos`;
     const method = isEditing ? 'PUT' : 'POST';
 
     try {
@@ -59,18 +162,20 @@ export default function AdminPanel() {
           nombre: formData.nombre,
           precio_base: Number(formData.precio_base),
           id_categoria: formData.id_categoria,
-          imagen_url: formData.imagen_url
+          imagen_url: formData.imagen_url,
+          requesterId: currentUser.id
         })
       });
 
       if (response.ok) {
         alert(isEditing ? 'Producto actualizado' : 'Producto creado');
-        const actualizados = await fetch('http://localhost:3000/api/productos?admin=true').then(res => res.json());
+        const actualizados = await fetch(`${API_URL}/productos?admin=true`).then(res => res.json());
         setProductos(actualizados);
         handleProductClear();
+        cargarLogs();
       }
     } catch (error) {
-      console.error("Error guardando producto", error);
+      console.error("Error guardando producto:", error);
     }
   };
 
@@ -83,17 +188,18 @@ export default function AdminPanel() {
     const accion = producto.activo ? "inhabilitar" : "habilitar";
     if(!window.confirm(`¿Seguro que deseas ${accion} este producto?`)) return;
     try {
-      const response = await fetch(`http://localhost:3000/api/productos/${producto.id_producto}/estado`, {
+      const response = await fetch(`${API_URL}/productos/${producto.id_producto}/estado`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activo: !producto.activo })
+        body: JSON.stringify({ activo: !producto.activo, requesterId: currentUser.id })
       });
       if (response.ok) {
-        const actualizados = await fetch('http://localhost:3000/api/productos?admin=true').then(res => res.json());
+        const actualizados = await fetch(`${API_URL}/productos?admin=true`).then(res => res.json());
         setProductos(actualizados);
+        cargarLogs();
       }
     } catch (error) {
-      console.error("Error cambiando estado", error);
+      console.error("Error cambiando estado:", error);
     }
   };
 
@@ -110,38 +216,34 @@ export default function AdminPanel() {
   };
 
   // ==========================================
-  // FUNCIONES DE USUARIOS
+  // LOGICA: USUARIOS
   // ==========================================
   const handleUserChange = (e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value });
 
   const handleUserSubmit = async (e) => {
     e.preventDefault();
-    const url = isUserEditing ? `http://localhost:3000/api/usuarios/${userFormData.id_usuario}` : 'http://localhost:3000/api/usuarios';
+    const url = isUserEditing ? `${API_URL}/usuarios/${userFormData.id_usuario}` : `${API_URL}/usuarios`;
     const method = isUserEditing ? 'PUT' : 'POST';
 
     try {
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: userFormData.nombre,
-          email: userFormData.email,
-          rol: userFormData.rol,
-          password: userFormData.password
-        })
+        body: JSON.stringify({ ...userFormData, requesterId: currentUser.id })
       });
       
       const data = await response.json();
       if (response.ok) {
         alert(isUserEditing ? 'Usuario actualizado' : 'Usuario creado');
-        const actualizados = await fetch('http://localhost:3000/api/usuarios').then(res => res.json());
+        const actualizados = await fetch(`${API_URL}/usuarios`).then(res => res.json());
         setUsuarios(actualizados);
         handleUserClear();
+        cargarLogs();
       } else {
         alert(data.error); 
       }
     } catch (error) {
-      console.error("Error guardando usuario", error);
+      console.error("Error guardando usuario:", error);
     }
   };
 
@@ -162,47 +264,53 @@ export default function AdminPanel() {
   };
 
   const handleUserToggleStatus = async (usuario) => {
-    if(usuario.id_usuario === currentUser.id) return alert("No puedes inhabilitarte a ti mismo mientras estás logueado.");
+    if(usuario.id_usuario === currentUser.id) return alert("No puedes inhabilitarte a ti mismo.");
     const accion = usuario.activo ? "inhabilitar" : "habilitar";
     if(!window.confirm(`¿Seguro que deseas ${accion} a este usuario?`)) return;
     
     try {
-      const response = await fetch(`http://localhost:3000/api/usuarios/${usuario.id_usuario}/estado`, {
+      const response = await fetch(`${API_URL}/usuarios/${usuario.id_usuario}/estado`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activo: !usuario.activo })
+        body: JSON.stringify({ activo: !usuario.activo, requesterId: currentUser.id })
       });
       const data = await response.json();
       if (response.ok) {
-        const actualizados = await fetch('http://localhost:3000/api/usuarios').then(res => res.json());
+        const actualizados = await fetch(`${API_URL}/usuarios`).then(res => res.json());
         setUsuarios(actualizados);
+        cargarLogs();
       } else {
         alert(data.error); 
       }
     } catch (error) {
-      console.error("Error cambiando estado del usuario", error);
+      console.error("Error cambiando estado del usuario:", error);
     }
   };
 
   const handleResetPassword = async (id) => {
-    if(!window.confirm("¿Seguro que deseas resetear la contraseña de este usuario a 'pass123'?")) return;
+    if(!window.confirm("¿Seguro que deseas resetear la contraseña a 'pass123'?")) return;
     try {
-      const response = await fetch(`http://localhost:3000/api/usuarios/${id}/reset-password`, {
+      const response = await fetch(`${API_URL}/usuarios/${id}/reset-password`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requesterRole: currentUser.rol }) 
+        body: JSON.stringify({ requesterRole: currentUser.rol, requesterId: currentUser.id })
       });
       const data = await response.json();
       if (response.ok) {
-        alert("La contraseña ha sido reseteada a 'pass123'.");
+        alert(data.mensaje || "Contraseña reseteada con éxito.");
+        setUsuarios(usuarios.map(u => u.id_usuario === id ? { ...u, activo: true } : u));
+        cargarLogs();
       } else {
         alert(data.error); 
       }
     } catch (error) {
-      console.error("Error reseteando contraseña", error);
+      console.error("Error reseteando contraseña:", error);
     }
   };
 
+  // ==========================================
+  // VISTA (RENDER)
+  // ==========================================
   return (
     <div className="mt-8 bg-gray-50 p-6 rounded-lg border">
       <div className="flex justify-between items-center mb-6 border-b pb-4">
@@ -210,13 +318,14 @@ export default function AdminPanel() {
         <div className="flex gap-2">
           <button onClick={() => setActiveTab('productos')} className={`px-4 py-2 font-bold rounded transition-colors ${activeTab === 'productos' ? 'bg-black text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Productos</button>
           <button onClick={() => setActiveTab('usuarios')} className={`px-4 py-2 font-bold rounded transition-colors ${activeTab === 'usuarios' ? 'bg-black text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Usuarios</button>
+          <button onClick={() => setActiveTab('auditoria')} className={`px-4 py-2 font-bold rounded transition-colors ${activeTab === 'auditoria' ? 'bg-black text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Auditoría 👁️</button>
         </div>
       </div>
 
-      {/* ================= VISTA DE PRODUCTOS ================= */}
+      {/* VISTA DE PRODUCTOS */}
       {activeTab === 'productos' && (
         <div>
-          <form onSubmit={handleProductSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-8 bg-white p-4 shadow-sm items-end">
+          <form onSubmit={handleProductSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6 bg-white p-4 shadow-sm items-end rounded">
             <input type="text" name="nombre" placeholder="Nombre" value={formData.nombre} onChange={handleChange} required className="border p-2 w-full" />
             <input type="number" name="precio_base" placeholder="Precio ($)" step="0.01" value={formData.precio_base} onChange={handleChange} required className="border p-2 w-full" />
             <select name="id_categoria" value={formData.id_categoria} onChange={handleChange} required className="border p-2 w-full">
@@ -235,7 +344,14 @@ export default function AdminPanel() {
             </div>
           </form>
 
-          <div className="overflow-x-auto">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-xl font-bold text-gray-800">Inventario Actual</h3>
+            <button onClick={exportarPDF} className="text-sm bg-red-600 text-white font-bold px-4 py-2 rounded hover:bg-red-700 transition shadow-sm">
+              📄 Exportar a PDF
+            </button>
+          </div>
+
+          <div className="overflow-x-auto shadow-sm">
             <table className="w-full text-left bg-white border">
               <thead className="bg-black text-white uppercase text-sm">
                 <tr>
@@ -276,17 +392,17 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* ================= VISTA DE USUARIOS ================= */}
+      {/* VISTA DE USUARIOS */}
       {activeTab === 'usuarios' && (
         <div>
-          <form onSubmit={handleUserSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-8 bg-white p-4 shadow-sm items-end">
+          <form onSubmit={handleUserSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6 bg-white p-4 shadow-sm items-end rounded">
             <input type="text" name="nombre" placeholder="Nombre completo" value={userFormData.nombre} onChange={handleUserChange} required className="border p-2 w-full" />
             <input type="email" name="email" placeholder="Correo electrónico" value={userFormData.email} onChange={handleUserChange} required className="border p-2 w-full" />
             
             {!isUserEditing ? (
               <input type="password" name="password" placeholder="Contraseña" value={userFormData.password} onChange={handleUserChange} required className="border p-2 w-full" minLength="6" />
             ) : (
-              <div className="border p-2 bg-gray-100 text-gray-500 text-sm flex items-center h-[42px] w-full">Contraseña oculta</div>
+              <div className="border p-2 bg-gray-100 text-gray-500 text-sm flex items-center h-[42px] w-full rounded">Contraseña oculta</div>
             )}
             
             <select 
@@ -312,7 +428,14 @@ export default function AdminPanel() {
             </div>
           </form>
 
-          <div className="overflow-x-auto">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-xl font-bold text-gray-800">Directorio de Usuarios</h3>
+            <button onClick={exportarPDF} className="text-sm bg-red-600 text-white font-bold px-4 py-2 rounded hover:bg-red-700 transition shadow-sm">
+              📄 Exportar a PDF
+            </button>
+          </div>
+
+          <div className="overflow-x-auto shadow-sm">
             <table className="w-full text-left bg-white border">
               <thead className="bg-black text-white uppercase text-sm">
                 <tr>
@@ -341,7 +464,7 @@ export default function AdminPanel() {
                         <button 
                           onClick={() => handleResetPassword(u.id_usuario)} 
                           className="bg-purple-500 text-white px-3 py-1 text-sm rounded hover:bg-purple-600"
-                          title="Resetear a pass123"
+                          title="Resetear a pass123 y Desbloquear"
                         >
                           Reset Pass
                         </button>
@@ -357,6 +480,66 @@ export default function AdminPanel() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* VISTA DE AUDITORÍA */}
+      {activeTab === 'auditoria' && (
+        <div className="bg-white p-4 rounded border shadow-sm">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-gray-800">Registro de Actividad</h3>
+            <div className="flex gap-2">
+              <button 
+                onClick={cargarLogs}
+                className="text-sm bg-gray-100 border border-gray-300 px-3 py-1 rounded hover:bg-gray-200 font-semibold"
+              >
+                🔄 Refrescar
+              </button>
+              <button onClick={exportarPDF} className="text-sm bg-red-600 text-white font-bold px-4 py-1 rounded hover:bg-red-700 transition shadow-sm">
+                📄 Exportar a PDF
+              </button>
+            </div>
+          </div>
+          
+          <div className="overflow-x-auto shadow-sm">
+            <table className="w-full text-left bg-white border">
+              <thead className="bg-gray-800 text-white uppercase text-xs">
+                <tr>
+                  <th className="p-3 w-48">Fecha y Hora</th>
+                  <th className="p-3 w-48">Autor</th>
+                  <th className="p-3 w-32">Acción</th>
+                  <th className="p-3">Detalles</th>
+                </tr>
+              </thead>
+              <tbody className="text-sm">
+                {logs.length > 0 ? (
+                  logs.map(log => (
+                    <tr key={log.id_log} className="border-b hover:bg-gray-50">
+                      <td className="p-3 whitespace-nowrap text-gray-500">
+                        {new Date(log.fecha).toLocaleString()}
+                      </td>
+                      <td className="p-3">
+                        <div className="font-semibold text-gray-800">{log.autor || 'Sistema'}</div>
+                        <div className="text-xs text-gray-500">{log.autor_email || 'N/A'}</div>
+                      </td>
+                      <td className="p-3">
+                        <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">
+                          {log.accion}
+                        </span>
+                      </td>
+                      <td className="p-3 text-gray-700">{log.detalles}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="4" className="p-6 text-center text-gray-500">
+                      No hay registros de auditoría por el momento.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
