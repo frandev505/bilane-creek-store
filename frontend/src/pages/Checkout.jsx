@@ -7,13 +7,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
-// Inicializamos Stripe con la llave pública de tu .env
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_AQUI_PON_TU_LLAVE_SI_FALLA_EL_ENV');
 
 // ==========================================
 // COMPONENTE INTERNO: EL FORMULARIO DE PAGO
 // ==========================================
-const CheckoutForm = ({ totalGeneral, cartItems, userId }) => {
+const CheckoutForm = ({ totalGeneral, cartItems, userId, isFormValid, formData }) => {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
@@ -29,17 +28,15 @@ const CheckoutForm = ({ totalGeneral, cartItems, userId }) => {
     setIsProcessing(true);
     setError(null);
 
-    // 1. Confirmamos el pago directamente con Stripe
     const { error: stripeError, paymentIntent } = await stripe.confirmPayment({
       elements,
-      redirect: 'if_required', // Evita que recargue la página si no es necesario
+      redirect: 'if_required', 
     });
 
     if (stripeError) {
       setError(stripeError.message);
       setIsProcessing(false);
     } else if (paymentIntent && paymentIntent.status === 'succeeded') {
-      // 2. ¡PAGO EXITOSO! Guardamos el pedido en tu Base de Datos
       try {
         await fetch('http://localhost:3000/api/pedidos', {
           method: 'POST',
@@ -47,14 +44,17 @@ const CheckoutForm = ({ totalGeneral, cartItems, userId }) => {
           body: JSON.stringify({
             id_usuario: userId === 'guest' ? null : userId,
             total: totalGeneral,
-            items: cartItems
+            items: cartItems,
+            datos_envio: formData // Enviamos los datos validados al backend
           })
         });
         
-        // 3. Limpiamos y redirigimos
         clearCart(userId);
         alert("¡Pago exitoso! Tu pedido ha sido procesado.");
-        navigate('/');
+        
+        // 🔥 EL CAMBIO ESTÁ AQUÍ: Redirigimos al historial de compras 🔥
+        navigate('/mis-compras');
+        
       } catch (err) {
         console.error("Error al guardar el pedido:", err);
         alert("Pago exitoso, pero hubo un error guardando el recibo.");
@@ -67,11 +67,17 @@ const CheckoutForm = ({ totalGeneral, cartItems, userId }) => {
       <PaymentElement />
       {error && <div className="text-red-600 bg-red-50 p-3 rounded text-sm font-medium">{error}</div>}
       <button 
-        disabled={!stripe || isProcessing} 
-        className="w-full bg-black text-white py-4 rounded font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 transition"
+        // ¡Magia aquí! Bloqueamos el botón si el formulario de arriba tiene errores o está vacío
+        disabled={!stripe || isProcessing || !isFormValid} 
+        className="w-full bg-black text-white py-4 rounded font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
       >
         {isProcessing ? 'Procesando Pago...' : `Pagar $${totalGeneral.toFixed(2)}`}
       </button>
+      {!isFormValid && (
+        <p className="text-sm text-red-500 text-center mt-2">
+          Por favor, completa correctamente todos los datos de envío para poder pagar.
+        </p>
+      )}
     </form>
   );
 };
@@ -94,10 +100,76 @@ export default function Checkout() {
   const costoEnvio = subtotal > 0 ? 15.00 : 0;
   const totalGeneral = subtotal + costoEnvio;
 
-  // ESTADO PARA EL SECRETO DE STRIPE
   const [clientSecret, setClientSecret] = useState("");
 
-  // PEDIMOS EL PERMISO DE COBRO AL BACKEND AL CARGAR LA PÁGINA
+  // ==========================================
+  // ESTADOS Y VALIDACIONES DEL FORMULARIO
+  // ==========================================
+  const [formData, setFormData] = useState({
+    email: user?.email || '',
+    nombre: user?.nombre || '',
+    direccion: '',
+    ciudad: '',
+    codigoPostal: ''
+  });
+
+  const [formErrors, setFormErrors] = useState({});
+
+  const validateField = (name, value) => {
+    let errorMsg = '';
+    switch (name) {
+      case 'nombre':
+      case 'ciudad':
+        // Solo letras y acentos (incluye la ñ)
+        if (!/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(value)) {
+          errorMsg = 'Solo se permiten letras y espacios.';
+        }
+        break;
+      case 'email':
+        // Estructura de correo estándar
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          errorMsg = 'Ingresa un correo electrónico válido.';
+        }
+        break;
+      case 'codigoPostal':
+        // Solo números (mínimo 4, máximo 10 dependiendo del país)
+        if (!/^\d{4,10}$/.test(value)) {
+          errorMsg = 'Debe contener solo números (mínimo 4).';
+        }
+        break;
+      case 'direccion':
+        // Busca si existe alguno de los caracteres prohibidos
+        if (/[@;:<>\/\\]/g.test(value)) {
+          errorMsg = 'No se permiten caracteres especiales como @ ; : < > / \\';
+        }
+        break;
+      default:
+        break;
+    }
+    return errorMsg;
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+
+    // Validar al escribir si no está vacío
+    if (value.trim() !== '') {
+      const error = validateField(name, value);
+      setFormErrors({ ...formErrors, [name]: error });
+    } else {
+      setFormErrors({ ...formErrors, [name]: 'Este campo es obligatorio.' });
+    }
+  };
+
+  // Verifica si TODOS los campos tienen texto y NINGÚN campo tiene errores
+  const isFormValid = 
+    Object.values(formData).every(value => value.trim() !== '') &&
+    Object.values(formErrors).every(error => error === '');
+
+  // ==========================================
+  // EFECTO PARA STRIPE
+  // ==========================================
   useEffect(() => {
     if (cartItems.length > 0) {
       fetch('http://localhost:3000/api/pagos/crear-intencion', {
@@ -140,7 +212,15 @@ export default function Checkout() {
               <h2 className="text-xl font-semibold mb-4 border-b pb-2">1. Información de Contacto</h2>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
-                <input type="email" defaultValue={user?.email || ''} className="w-full border border-gray-300 rounded p-2 focus:ring-black focus:border-black" placeholder="tu@email.com" />
+                <input 
+                  type="email" 
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className={`w-full border rounded p-2 focus:ring-black focus:border-black ${formErrors.email ? 'border-red-500 bg-red-50' : 'border-gray-300'}`} 
+                  placeholder="tu@email.com" 
+                />
+                {formErrors.email && <p className="text-red-500 text-xs mt-1">{formErrors.email}</p>}
               </div>
             </section>
 
@@ -149,19 +229,48 @@ export default function Checkout() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
-                  <input type="text" defaultValue={user?.nombre || ''} className="w-full border border-gray-300 rounded p-2 focus:ring-black focus:border-black" />
+                  <input 
+                    type="text" 
+                    name="nombre"
+                    value={formData.nombre}
+                    onChange={handleChange}
+                    className={`w-full border rounded p-2 focus:ring-black focus:border-black ${formErrors.nombre ? 'border-red-500 bg-red-50' : 'border-gray-300'}`} 
+                  />
+                  {formErrors.nombre && <p className="text-red-500 text-xs mt-1">{formErrors.nombre}</p>}
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
-                  <input type="text" className="w-full border border-gray-300 rounded p-2 focus:ring-black focus:border-black" placeholder="Ej. Av. Principal 123" />
+                  <input 
+                    type="text" 
+                    name="direccion"
+                    value={formData.direccion}
+                    onChange={handleChange}
+                    className={`w-full border rounded p-2 focus:ring-black focus:border-black ${formErrors.direccion ? 'border-red-500 bg-red-50' : 'border-gray-300'}`} 
+                    placeholder="Ej. Av. Principal 123" 
+                  />
+                  {formErrors.direccion && <p className="text-red-500 text-xs mt-1">{formErrors.direccion}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ciudad</label>
-                  <input type="text" className="w-full border border-gray-300 rounded p-2 focus:ring-black focus:border-black" />
+                  <input 
+                    type="text" 
+                    name="ciudad"
+                    value={formData.ciudad}
+                    onChange={handleChange}
+                    className={`w-full border rounded p-2 focus:ring-black focus:border-black ${formErrors.ciudad ? 'border-red-500 bg-red-50' : 'border-gray-300'}`} 
+                  />
+                  {formErrors.ciudad && <p className="text-red-500 text-xs mt-1">{formErrors.ciudad}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Código Postal</label>
-                  <input type="text" className="w-full border border-gray-300 rounded p-2 focus:ring-black focus:border-black" />
+                  <input 
+                    type="text" 
+                    name="codigoPostal"
+                    value={formData.codigoPostal}
+                    onChange={handleChange}
+                    className={`w-full border rounded p-2 focus:ring-black focus:border-black ${formErrors.codigoPostal ? 'border-red-500 bg-red-50' : 'border-gray-300'}`} 
+                  />
+                  {formErrors.codigoPostal && <p className="text-red-500 text-xs mt-1">{formErrors.codigoPostal}</p>}
                 </div>
               </div>
             </section>
@@ -172,7 +281,14 @@ export default function Checkout() {
               
               {clientSecret ? (
                 <Elements stripe={stripePromise} options={{ clientSecret }}>
-                  <CheckoutForm totalGeneral={totalGeneral} cartItems={cartItems} userId={userId} />
+                  {/* Pasamos los props necesarios para la validación y datos */}
+                  <CheckoutForm 
+                    totalGeneral={totalGeneral} 
+                    cartItems={cartItems} 
+                    userId={userId} 
+                    isFormValid={isFormValid}
+                    formData={formData}
+                  />
                 </Elements>
               ) : (
                 <div className="flex justify-center items-center h-32">
