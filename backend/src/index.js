@@ -5,6 +5,9 @@ const bcrypt = require('bcrypt');
 const SALT_ROUNDS = 10;
 require('dotenv').config();
 
+// <-- NOVEDAD: STRIPE 1. Importamos las rutas de pago
+const paymentRoutes = require('./routes/paymentRoutes'); 
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -36,19 +39,19 @@ const registrarAuditoria = async (id_usuario, accion, detalles) => {
 // NUEVO: MIDDLEWARE DE SEGURIDAD (AUDITOR) 🛡️
 // ==========================================
 const bloquearAuditor = (req, res, next) => {
-  // Buscamos el rol en el body (para peticiones POST/PUT/DELETE) o en los headers
   const rol = req.body.requesterRole || req.headers['x-user-role'];
 
-  // Si es auditor y la petición NO es de lectura (GET)
   if (rol === 'auditor' && req.method !== 'GET') {
     return res.status(403).json({ 
       error: "Acceso denegado: Los auditores tienen permisos estrictos de solo lectura." 
     });
   }
   
-  // Si no es auditor (o es GET), dejamos que la petición continúe
   next();
 };
+
+// <-- NOVEDAD: STRIPE 2. Le decimos a Express que use las rutas
+app.use('/api/pagos', paymentRoutes);
 
 app.get('/', (req, res) => {
   res.json({ mensaje: "API de Bilane Creek lista" });
@@ -160,7 +163,6 @@ app.get('/api/categorias', async (req, res) => {
   }
 });
 
-// APLICAMOS MIDDLEWARE A LAS RUTAS QUE MODIFICAN PRODUCTOS
 app.post('/api/productos', bloquearAuditor, async (req, res) => {
   const { nombre, id_categoria, precio_base, imagen_url, requesterId } = req.body;
   try {
@@ -215,33 +217,93 @@ app.delete('/api/productos/:id', bloquearAuditor, async (req, res) => {
   }
 });
 
+// ==========================================
+// RUTA DE PEDIDOS (NUEVA IMPLEMENTACIÓN)
+// ==========================================
 app.post('/api/pedidos', async (req, res) => {
-  // Nota: Dejamos pasar pedidos sin bloquearAuditor porque un auditor no debería poder hacer pedidos,
-  // pero los clientes sí. Si quisieras bloquearlo, podrías ponerlo, pero el frontend ya le oculta el carrito.
   const { id_usuario, total, items } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    
+    // 1. Crear el pedido
     const pedidoResult = await client.query(
       "INSERT INTO pedidos (id_usuario, total, estado) VALUES ($1, $2, 'Completado') RETURNING id_pedido",
       [id_usuario, total]
     );
     const id_pedido = pedidoResult.rows[0].id_pedido;
 
+    // 2. Guardar los detalles del pedido
     for (let item of items) {
       const subtotal = item.cantidad * item.precio_base;
+      
+      // BUSCAR O CREAR UNA VARIANTE PARA ESTE PRODUCTO
+      let id_variante_a_usar;
+      
+      // Buscar si el producto ya tiene alguna variante
+      const varianteExistente = await client.query(
+        'SELECT id_variante FROM inventario_variantes WHERE id_producto = $1 LIMIT 1',
+        [item.id_producto]
+      );
+
+      if (varianteExistente.rows.length > 0) {
+        id_variante_a_usar = varianteExistente.rows[0].id_variante;
+      } else {
+        // Si no tiene variante, le creamos una variante estándar automáticamente
+        const nuevaVariante = await client.query(
+          "INSERT INTO inventario_variantes (id_producto, talla, color, stock) VALUES ($1, 'Única', 'Único', 100) RETURNING id_variante",
+          [item.id_producto]
+        );
+        id_variante_a_usar = nuevaVariante.rows[0].id_variante;
+      }
+
+      // Ahora sí, guardamos el detalle del pedido usando el id_variante correcto
       await client.query(
         'INSERT INTO detalle_pedidos (id_pedido, id_variante, cantidad, precio_unitario_historico, subtotal) VALUES ($1, $2, $3, $4, $5)',
-        [id_pedido, item.id_producto, item.cantidad, item.precio_base, subtotal]
+        [id_pedido, id_variante_a_usar, item.cantidad, item.precio_base, subtotal]
       );
     }
+    
     await client.query('COMMIT');
     res.json({ success: true, id_pedido: id_pedido, mensaje: "Pago procesado con éxito" });
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error("Error gigante guardando el pedido:", err);
     res.status(500).json({ error: "Error al procesar el pago" });
   } finally {
     client.release();
+  }
+});
+
+// ==========================================
+// RUTA: HISTORIAL DE COMPRAS DEL USUARIO
+// ==========================================
+app.get('/api/pedidos/usuario/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT p.id_pedido, p.total, p.estado, p.fecha_pedido AS created_at,
+             json_agg(json_build_object(
+               'nombre', prod.nombre, 
+               'cantidad', dp.cantidad, 
+               'precio', dp.precio_unitario_historico, 
+               'imagen_url', prod.imagen_url,
+               'talla', iv.talla,
+               'color', iv.color
+             )) as items
+      FROM pedidos p
+      JOIN detalle_pedidos dp ON p.id_pedido = dp.id_pedido
+      JOIN inventario_variantes iv ON dp.id_variante = iv.id_variante
+      JOIN productos prod ON iv.id_producto = prod.id_producto
+      WHERE p.id_usuario = $1
+      GROUP BY p.id_pedido
+      ORDER BY p.fecha_pedido DESC
+    `, [id]);
+    
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error al obtener historial:", err);
+    res.status(500).json({ error: "Error al obtener el historial de compras" });
   }
 });
 
@@ -353,7 +415,6 @@ app.put('/api/usuarios/:id/reset-password', bloquearAuditor, async (req, res) =>
 });
 
 app.put('/api/usuarios/:id/cambiar-password', async (req, res) => {
-  // Nota: Esta ruta la dejamos sin bloquearAuditor porque un auditor SÍ debería poder cambiar SU PROPIA contraseña.
   const { id } = req.params;
   const { nuevaPassword } = req.body;
 

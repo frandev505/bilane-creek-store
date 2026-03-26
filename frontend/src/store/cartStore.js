@@ -32,6 +32,26 @@ export const useCartStore = create(
         };
       }),
 
+      // --- NUEVA FUNCIÓN: DISMINUIR CANTIDAD ---
+      decreaseQuantity: (id_producto, userId = 'guest') => set((state) => {
+        const carritoActual = state.carritosPorUsuario[userId] || [];
+        
+        const nuevoCarrito = carritoActual.map((item) => {
+          if (item.id_producto === id_producto) {
+            // Si tiene más de 1, le restamos 1. Si tiene 1, se queda en 1.
+            return { ...item, cantidad: Math.max(1, item.cantidad - 1) };
+          }
+          return item;
+        });
+
+        return {
+          carritosPorUsuario: {
+            ...state.carritosPorUsuario,
+            [userId]: nuevoCarrito
+          }
+        };
+      }),
+
       removeFromCart: (id_producto, userId = 'guest') => set((state) => {
         const carritoActual = state.carritosPorUsuario[userId] || [];
         return {
@@ -51,10 +71,8 @@ export const useCartStore = create(
     }),
     {
       name: 'bilane-cart-storage',
-      // AQUÍ ESTÁ LA CLAVE: partialize decide qué va al LocalStorage permanentemente
       partialize: (state) => ({
         ...state,
-        // Filtramos para guardar TODOS los carritos MENOS el de 'guest'
         carritosPorUsuario: Object.fromEntries(
           Object.entries(state.carritosPorUsuario).filter(([key]) => key !== 'guest')
         )

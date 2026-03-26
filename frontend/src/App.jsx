@@ -1,10 +1,12 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Marquee from './components/Marquee';
 import ProductCard from './components/ProductCard';
 import MyAccount from './pages/MyAccount';
 import AdminPanel from './components/AdminPanel'; 
-import AuditorPanel from './components/AuditorPanel'; // <-- NOVEDAD 1: Importamos el panel del auditor
+import AuditorPanel from './components/AuditorPanel';
+import Checkout from './pages/Checkout'; 
+import HistorialCompras from './pages/HistorialCompras';
 import { useProducts } from './hooks/useProducts'; 
 import { useCartStore } from './store/cartStore'; 
 import { useAuthStore } from './store/authStore';
@@ -14,10 +16,8 @@ function Home() {
   
   return (
     <>
-      {/* 1. HERO SECTION CON IMAGEN DE FONDO */}
       <header className="relative w-full h-[70vh] flex items-center justify-center text-center">
         <div className="absolute inset-0 bg-black/40 z-10"></div>
-        
         <div 
           className="absolute inset-0 bg-cover bg-center z-0"
           style={{ backgroundImage: "url('/src/assets/sweter-think-less-copia-scaled-2560x1188.jpg')" }}
@@ -36,10 +36,8 @@ function Home() {
         </div>
       </header>
 
-      {/* 2. CINTA ANIMADA (MARQUEE) */}
       <Marquee text="COLLECTIONS" bgColor="bg-black" textColor="text-white" />
 
-      {/* 3. CATÁLOGO */}
       <main className="max-w-7xl mx-auto px-4 py-20">
         <div className="text-center mb-16">
           <h2 className="text-4xl font-black uppercase mb-2 tracking-tight">Latest Drops</h2>
@@ -62,7 +60,6 @@ function Home() {
         )}
       </main>
 
-      {/* 4. CTA BOTTOM */}
       <section className="bg-gray-100 py-24 text-center px-4 border-t border-gray-200">
         <h2 className="text-4xl font-black uppercase mb-6 tracking-tight">Elevate Your Style</h2>
         <button className="bg-black text-white px-10 py-4 font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors">
@@ -70,7 +67,6 @@ function Home() {
         </button>
       </section>
 
-      {/* FOOTER */}
       <footer className="bg-black text-white p-10 flex flex-col md:flex-row justify-between items-center text-sm font-semibold">
         <p className="mb-4 md:mb-0">© 2026 Bilane Creek. All rights reserved.</p>
         <div className="flex gap-6 uppercase tracking-wider">
@@ -89,6 +85,10 @@ function App() {
   const carritosPorUsuario = useCartStore((state) => state.carritosPorUsuario);
   const removeFromCart = useCartStore((state) => state.removeFromCart);
   
+  // TRAEMOS LAS FUNCIONES DE CANTIDAD
+  const addToCart = useCartStore((state) => state.addToCart);
+  const decreaseQuantity = useCartStore((state) => state.decreaseQuantity);
+  
   const user = useAuthStore((state) => state.user);
   const userId = user ? user.id : 'guest';
 
@@ -104,10 +104,11 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/my-account" element={<MyAccount />} />
           <Route path="/admin" element={<AdminPanel />} />
-          <Route path="/auditor" element={<AuditorPanel />} /> {/* <-- NOVEDAD 2: Agregamos la ruta del auditor */}
+          <Route path="/auditor" element={<AuditorPanel />} />
+          <Route path="/checkout" element={<Checkout />} /> 
+          <Route path="/mis-compras" element={<HistorialCompras />} />
         </Routes>
 
-        {/* CARRITO LATERAL */}
         {isCartOpen && (
           <div className="fixed inset-0 z-50 flex justify-end">
             <div className="absolute inset-0 bg-black/50" onClick={toggleCart} />
@@ -129,13 +130,22 @@ function App() {
                       <div key={item.id_producto} className="flex justify-between items-center border-b pb-4">
                         <div>
                           <p className="font-bold">{item.nombre}</p>
-                          <p className="text-sm text-gray-500">Cant: {item.cantidad} x ${Number(item.precio_base).toFixed(2)}</p>
-                          <button 
-                            onClick={() => removeFromCart(item.id_producto, userId)} 
-                            className="text-red-500 text-xs font-bold mt-2 hover:underline uppercase tracking-widest"
-                          >
-                            Eliminar
-                          </button>
+                          
+                          {/* CONTROLES DE CANTIDAD EN CARRITO LATERAL */}
+                          <div className="flex items-center gap-3 mt-2">
+                            <div className="flex items-center border rounded">
+                              <button onClick={() => decreaseQuantity(item.id_producto, userId)} className="px-2 py-0.5 text-gray-600 hover:bg-gray-100 transition">-</button>
+                              <span className="px-2 text-sm font-bold border-x">{item.cantidad}</span>
+                              <button onClick={() => addToCart(item, userId)} className="px-2 py-0.5 text-gray-600 hover:bg-gray-100 transition">+</button>
+                            </div>
+                            <button 
+                              onClick={() => removeFromCart(item.id_producto, userId)} 
+                              className="text-red-500 text-xs font-bold hover:underline uppercase tracking-widest"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+
                         </div>
                         <p className="font-bold">${(item.precio_base * item.cantidad).toFixed(2)}</p>
                       </div>
@@ -150,9 +160,15 @@ function App() {
                     <span>Total:</span>
                     <span>${cartTotal.toFixed(2)}</span>
                   </div>
-                  <button className="w-full bg-black text-white py-4 font-bold tracking-widest uppercase hover:bg-gray-800">
+                  
+                  <Link 
+                    to="/checkout"
+                    onClick={toggleCart}
+                    className="block w-full text-center bg-black text-white py-4 font-bold tracking-widest uppercase hover:bg-gray-800"
+                  >
                     Ir al Pago
-                  </button>
+                  </Link>
+                  
                 </div>
               )}
             </div>

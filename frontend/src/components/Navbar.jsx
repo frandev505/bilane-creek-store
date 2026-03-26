@@ -18,7 +18,7 @@ export default function Navbar() {
 
   // Verificamos los roles del usuario actual
   const isAdmin = user?.rol === 'admin' || user?.rol === 'gerente';
-  const isAuditor = user?.rol === 'auditor'; // <-- NUEVO: Identificamos al auditor
+  const isAuditor = user?.rol === 'auditor'; 
 
   // Obtenemos solo el carrito del usuario actual
   const cartItems = carritosPorUsuario[userId] || [];
@@ -79,6 +79,17 @@ export default function Navbar() {
                     Cambiar Contraseña
                   </button>
 
+                  {/* NUEVO: Opción Mis Compras (Solo para clientes) */}
+                  {!isAdmin && !isAuditor && (
+                    <Link 
+                      to="/mis-compras" 
+                      onClick={() => setMenuAbierto(false)}
+                      className="block px-4 py-2 text-sm hover:bg-gray-100 transition text-gray-900 font-medium"
+                    >
+                      Mis Compras
+                    </Link>
+                  )}
+
                   {/* Acceso rápido al Panel (solo Admin/Gerente) */}
                   {isAdmin && (
                     <Link 
@@ -90,7 +101,7 @@ export default function Navbar() {
                     </Link>
                   )}
 
-                  {/* NUEVO: Acceso rápido al Panel de Auditoría (solo Auditor) */}
+                  {/* Acceso rápido al Panel de Auditoría (solo Auditor) */}
                   {isAuditor && (
                     <Link 
                       to="/auditor" 
