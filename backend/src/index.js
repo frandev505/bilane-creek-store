@@ -36,7 +36,7 @@ const registrarAuditoria = async (id_usuario, accion, detalles) => {
 };
 
 // ==========================================
-// NUEVO: MIDDLEWARE DE SEGURIDAD (AUDITOR) 🛡️
+// MIDDLEWARE DE SEGURIDAD (AUDITOR) 🛡️
 // ==========================================
 const bloquearAuditor = (req, res, next) => {
   const rol = req.body.requesterRole || req.headers['x-user-role'];
@@ -135,17 +135,23 @@ app.post('/api/register', async (req, res) => {
 });
 
 // ==========================================
-// RUTAS PARA PRODUCTOS Y CATEGORÍAS
+// RUTAS PARA PRODUCTOS Y CATEGORÍAS (ACTUALIZADO CON STOCK)
 // ==========================================
 
 app.get('/api/productos', async (req, res) => {
   const { admin } = req.query;
   try {
     const query = admin 
-      ? `SELECT p.id_producto, p.nombre, p.precio_base, p.imagen_url, p.activo, c.nombre as categoria, p.id_categoria 
-         FROM productos p JOIN categorias c ON p.id_categoria = c.id_categoria ORDER BY p.created_at DESC`
-      : `SELECT p.id_producto, p.nombre, p.precio_base, p.imagen_url, c.nombre as categoria 
-         FROM productos p JOIN categorias c ON p.id_categoria = c.id_categoria WHERE p.activo = true ORDER BY p.created_at DESC`;
+      ? `SELECT p.id_producto, p.nombre, p.precio_base, p.imagen_url, p.tipo_venta, p.activo, c.nombre as categoria, p.id_categoria, COALESCE(v.stock, 0) as stock 
+         FROM productos p 
+         JOIN categorias c ON p.id_categoria = c.id_categoria 
+         LEFT JOIN inventario_variantes v ON p.id_producto = v.id_producto
+         ORDER BY p.created_at DESC`
+      : `SELECT p.id_producto, p.nombre, p.precio_base, p.imagen_url, p.tipo_venta, c.nombre as categoria, COALESCE(v.stock, 0) as stock 
+         FROM productos p 
+         JOIN categorias c ON p.id_categoria = c.id_categoria 
+         LEFT JOIN inventario_variantes v ON p.id_producto = v.id_producto
+         WHERE p.activo = true ORDER BY p.created_at DESC`;
          
     const result = await pool.query(query);
     res.json(result.rows);
@@ -164,32 +170,72 @@ app.get('/api/categorias', async (req, res) => {
 });
 
 app.post('/api/productos', bloquearAuditor, async (req, res) => {
-  const { nombre, id_categoria, precio_base, imagen_url, requesterId } = req.body;
+  const { nombre, id_categoria, precio_base, imagen_url, tipo_venta, stock, requesterId } = req.body;
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      'INSERT INTO productos (nombre, id_categoria, precio_base, imagen_url) VALUES ($1, $2, $3, $4) RETURNING *',
-      [nombre, id_categoria, precio_base, imagen_url]
+    await client.query('BEGIN');
+    
+    // 1. Guardar el producto principal
+    const result = await client.query(
+      'INSERT INTO productos (nombre, id_categoria, precio_base, imagen_url, tipo_venta) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [nombre, id_categoria, precio_base, imagen_url, tipo_venta || 'prefabricado']
     );
-    await registrarAuditoria(requesterId, 'CREAR_PRODUCTO', `Creó el producto: ${nombre}`);
-    res.json({ success: true, producto: result.rows[0] });
+    const nuevoProducto = result.rows[0];
+
+    // 2. Guardar el stock en la tabla de variantes
+    const stockInicial = tipo_venta === 'prefabricado' ? (stock || 0) : 0;
+    await client.query(
+      "INSERT INTO inventario_variantes (id_producto, talla, color, stock) VALUES ($1, 'Única', 'Único', $2)",
+      [nuevoProducto.id_producto, stockInicial]
+    );
+
+    await client.query('COMMIT');
+    await registrarAuditoria(requesterId, 'CREAR_PRODUCTO', `Creó el producto: ${nombre} con stock: ${stockInicial}`);
+    res.json({ success: true, producto: nuevoProducto });
   } catch (err) {
-    res.status(500).json({ error: "Error al crear el producto" });
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: "Error al crear el producto y su stock" });
+  } finally {
+    client.release();
   }
 });
 
 app.put('/api/productos/:id', bloquearAuditor, async (req, res) => {
   const { id } = req.params;
-  const { nombre, precio_base, id_categoria, imagen_url, requesterId } = req.body;
+  const { nombre, precio_base, id_categoria, imagen_url, tipo_venta, stock, requesterId } = req.body;
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      'UPDATE productos SET nombre = $1, precio_base = $2, id_categoria = $3, imagen_url = $4, updated_at = CURRENT_TIMESTAMP WHERE id_producto = $5 RETURNING *',
-      [nombre, precio_base, id_categoria, imagen_url, id]
+    await client.query('BEGIN');
+
+    // 1. Actualizar datos principales
+    const result = await client.query(
+      'UPDATE productos SET nombre = $1, precio_base = $2, id_categoria = $3, imagen_url = $4, tipo_venta = $5, updated_at = CURRENT_TIMESTAMP WHERE id_producto = $6 RETURNING *',
+      [nombre, precio_base, id_categoria, imagen_url, tipo_venta, id]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
+    
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: "Producto no encontrado" });
+    }
+
+    // 2. Actualizar el stock
+    const stockActualizado = tipo_venta === 'prefabricado' ? (stock || 0) : 0;
+    const varianteCheck = await client.query('SELECT id_variante FROM inventario_variantes WHERE id_producto = $1 LIMIT 1', [id]);
+    
+    if (varianteCheck.rows.length > 0) {
+      await client.query('UPDATE inventario_variantes SET stock = $1 WHERE id_producto = $2', [stockActualizado, id]);
+    } else {
+      await client.query("INSERT INTO inventario_variantes (id_producto, talla, color, stock) VALUES ($1, 'Única', 'Único', $2)", [id, stockActualizado]);
+    }
+
+    await client.query('COMMIT');
     await registrarAuditoria(requesterId, 'EDITAR_PRODUCTO', `Editó el producto ID: ${id} (${nombre})`);
     res.json({ success: true, producto: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: "Error al actualizar el producto" });
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: "Error al actualizar el producto y su stock" });
+  } finally {
+    client.release();
   }
 });
 
@@ -218,58 +264,102 @@ app.delete('/api/productos/:id', bloquearAuditor, async (req, res) => {
 });
 
 // ==========================================
-// RUTA DE PEDIDOS (NUEVA IMPLEMENTACIÓN)
+// RUTA DE PEDIDOS (NUEVA IMPLEMENTACIÓN B2B/B2C Y REDUCCIÓN DE STOCK)
 // ==========================================
 app.post('/api/pedidos', async (req, res) => {
-  const { id_usuario, total, items } = req.body;
+  const { id_usuario, items } = req.body;
   const client = await pool.connect();
+  
   try {
+    // Iniciamos la transacción: Si algo falla (ej. falta de stock), se cancela todo
     await client.query('BEGIN');
     
-    // 1. Crear el pedido
+    // 1. CALCULAR TOTALES Y DESCUENTOS
+    let cantidadTotalPrendas = 0;
+    let subtotalPuro = 0;
+
+    for (let item of items) {
+      cantidadTotalPrendas += Number(item.cantidad);
+      subtotalPuro += Number(item.cantidad) * Number(item.precio_base);
+    }
+
+    let descuentoPorcentaje = 0;
+    if (cantidadTotalPrendas >= 100) {
+      descuentoPorcentaje = 0.15;
+    } else if (cantidadTotalPrendas >= 50) {
+      descuentoPorcentaje = 0.10;
+    } else if (cantidadTotalPrendas >= 10) {
+      descuentoPorcentaje = 0.05;
+    }
+
+    const totalCalculadoBackend = subtotalPuro * (1 - descuentoPorcentaje);
+    
+    // 2. CREAR EL PEDIDO
     const pedidoResult = await client.query(
       "INSERT INTO pedidos (id_usuario, total, estado) VALUES ($1, $2, 'Completado') RETURNING id_pedido",
-      [id_usuario, total]
+      [id_usuario, totalCalculadoBackend]
     );
     const id_pedido = pedidoResult.rows[0].id_pedido;
 
-    // 2. Guardar los detalles del pedido
+    // 3. GUARDAR DETALLES Y ACTUALIZAR STOCK
     for (let item of items) {
-      const subtotal = item.cantidad * item.precio_base;
+      const precioUnitarioConDescuento = item.precio_base * (1 - descuentoPorcentaje);
+      const subtotalItem = item.cantidad * precioUnitarioConDescuento;
       
-      // BUSCAR O CREAR UNA VARIANTE PARA ESTE PRODUCTO
-      let id_variante_a_usar;
-      
-      // Buscar si el producto ya tiene alguna variante
-      const varianteExistente = await client.query(
-        'SELECT id_variante FROM inventario_variantes WHERE id_producto = $1 LIMIT 1',
-        [item.id_producto]
-      );
+      // Obtener la información actual del producto y su stock en la base de datos
+      const prodData = await client.query(`
+        SELECT p.tipo_venta, v.id_variante, COALESCE(v.stock, 0) as stock
+        FROM productos p
+        LEFT JOIN inventario_variantes v ON p.id_producto = v.id_producto
+        WHERE p.id_producto = $1
+        LIMIT 1
+      `, [item.id_producto]);
 
-      if (varianteExistente.rows.length > 0) {
-        id_variante_a_usar = varianteExistente.rows[0].id_variante;
-      } else {
-        // Si no tiene variante, le creamos una variante estándar automáticamente
-        const nuevaVariante = await client.query(
-          "INSERT INTO inventario_variantes (id_producto, talla, color, stock) VALUES ($1, 'Única', 'Único', 100) RETURNING id_variante",
-          [item.id_producto]
-        );
-        id_variante_a_usar = nuevaVariante.rows[0].id_variante;
+      if (prodData.rows.length === 0) {
+        throw new Error(`El producto ID ${item.id_producto} ya no existe en la base de datos.`);
       }
 
-      // Ahora sí, guardamos el detalle del pedido usando el id_variante correcto
+      const { tipo_venta, id_variante, stock } = prodData.rows[0];
+      let id_variante_a_usar = id_variante;
+
+      // 🔥 LÓGICA DE INVENTARIO: ¿Es Prefabricado o Bajo Pedido?
+      if (tipo_venta === 'prefabricado') {
+        // Validamos si hay suficiente stock
+        if (stock < item.cantidad) {
+          throw new Error(`Stock insuficiente para el producto "${item.nombre || 'Seleccionado'}". Solo quedan ${stock} unidades disponibles.`);
+        }
+        
+        // Descontamos el stock
+        await client.query(
+          'UPDATE inventario_variantes SET stock = stock - $1 WHERE id_variante = $2',
+          [item.cantidad, id_variante_a_usar]
+        );
+      } else {
+        // Si es bajo pedido y no tiene variante, se la creamos (con stock 0)
+        if (!id_variante_a_usar) {
+          const nuevaVariante = await client.query(
+            "INSERT INTO inventario_variantes (id_producto, talla, color, stock) VALUES ($1, 'Única', 'Único', 0) RETURNING id_variante",
+            [item.id_producto]
+          );
+          id_variante_a_usar = nuevaVariante.rows[0].id_variante;
+        }
+      }
+
+      // Guardamos el detalle del pedido
       await client.query(
         'INSERT INTO detalle_pedidos (id_pedido, id_variante, cantidad, precio_unitario_historico, subtotal) VALUES ($1, $2, $3, $4, $5)',
-        [id_pedido, id_variante_a_usar, item.cantidad, item.precio_base, subtotal]
+        [id_pedido, id_variante_a_usar, item.cantidad, precioUnitarioConDescuento, subtotalItem]
       );
     }
     
+    // Si llegamos hasta aquí, todo salió bien: Confirmamos los cambios (COMMIT)
     await client.query('COMMIT');
-    res.json({ success: true, id_pedido: id_pedido, mensaje: "Pago procesado con éxito" });
+    res.json({ success: true, id_pedido: id_pedido, mensaje: "Pago y descuentos procesados con éxito", totalPagado: totalCalculadoBackend });
   } catch (err) {
+    // Si hay error (ej. falta de stock), revertimos todo para no cobrar ni crear pedidos a medias
     await client.query('ROLLBACK');
-    console.error("Error gigante guardando el pedido:", err);
-    res.status(500).json({ error: "Error al procesar el pago" });
+    console.error("Error guardando el pedido:", err.message);
+    res.status(400).json({ error: err.message || "Error al procesar el pago y el stock" });
   } finally {
     client.release();
   }

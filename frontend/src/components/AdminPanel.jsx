@@ -49,7 +49,8 @@ export default function AdminPanel() {
   // ESTADOS PARA MODALES Y FORMULARIOS
   // ==========================================
   const [showProductModal, setShowProductModal] = useState(false);
-  const [formData, setFormData] = useState({ id_producto: null, nombre: '', precio_base: '', id_categoria: '', imagen_url: '' });
+  // 🔥 NUEVO: Agregamos 'stock' al estado inicial
+  const [formData, setFormData] = useState({ id_producto: null, nombre: '', precio_base: '', id_categoria: '', imagen_url: '', tipo_venta: 'prefabricado', stock: '' });
   const [isEditing, setIsEditing] = useState(false);
 
   const [showUserModal, setShowUserModal] = useState(false);
@@ -93,9 +94,11 @@ export default function AdminPanel() {
   if (sortConfig.key) {
     productosProcesados.sort((a, b) => {
       let aValue = a[sortConfig.key]; let bValue = b[sortConfig.key];
-      if (sortConfig.key === 'precio_base') { aValue = Number(aValue); bValue = Number(bValue); }
+      // 🔥 NUEVO: Permitimos ordenar numéricamente también por stock
+      if (sortConfig.key === 'precio_base' || sortConfig.key === 'stock') { aValue = Number(aValue); bValue = Number(bValue); }
       else if (sortConfig.key === 'activo') { aValue = aValue ? 1 : 0; bValue = bValue ? 1 : 0; }
       else { aValue = String(aValue).toLowerCase(); bValue = String(bValue).toLowerCase(); }
+      
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -117,6 +120,7 @@ export default function AdminPanel() {
   // PROCESAMIENTO: USUARIOS
   // ==========================================
   let usuariosProcesados = [...usuarios];
+
   if (sortUsersConfig.key) {
     usuariosProcesados.sort((a, b) => {
       let aValue = a[sortUsersConfig.key]; let bValue = b[sortUsersConfig.key];
@@ -138,6 +142,7 @@ export default function AdminPanel() {
   // PROCESAMIENTO: AUDITORÍA
   // ==========================================
   let logsProcesados = [...logs];
+
   if (sortLogsConfig.key) {
     logsProcesados.sort((a, b) => {
       let aValue = a[sortLogsConfig.key]; let bValue = b[sortLogsConfig.key];
@@ -168,7 +173,6 @@ export default function AdminPanel() {
   const usuariosPaginados = paginateList(usuariosProcesados, currentPageUser);
   const logsPaginados = paginateList(logsProcesados, currentPageLog);
 
-  // Componente Reutilizable de Paginación
   const PaginationControls = ({ totalItems, currentPage, setCurrentPage }) => {
     if (itemsPerPage === 'all' || totalItems <= itemsPerPage) return null;
     const totalPages = Math.ceil(totalItems / itemsPerPage);
@@ -193,7 +197,11 @@ export default function AdminPanel() {
   const regexNombreProducto = /^[a-zA-ZÀ-ÿ0-9\s]+$/;
   const isNombreProductoValido = formData.nombre.length === 0 || regexNombreProducto.test(formData.nombre);
   const isPrecioProductoValido = formData.precio_base === '' || Number(formData.precio_base) >= 0;
-  const isProductFormValid = formData.nombre.length > 0 && formData.nombre.length <= 30 && isNombreProductoValido && isPrecioProductoValido && formData.precio_base !== '' && formData.id_categoria !== '';
+  
+  // 🔥 NUEVO: Validar que si es prefabricado, el stock no esté vacío y sea válido
+  const isStockValido = formData.tipo_venta === 'bajo_pedido' ? true : (formData.stock !== '' && Number(formData.stock) >= 0);
+
+  const isProductFormValid = formData.nombre.length > 0 && formData.nombre.length <= 30 && isNombreProductoValido && isPrecioProductoValido && formData.precio_base !== '' && formData.id_categoria !== '' && isStockValido;
 
   // ==========================================
   // VALIDACIONES: USUARIOS (INCLUYENDO FUERZA DE CONTRASEÑA)
@@ -203,7 +211,7 @@ export default function AdminPanel() {
   
   const isUserNameValid = userFormData.nombre.length === 0 || regexNombreUsuario.test(userFormData.nombre);
   const isUserEmailValid = userFormData.email.length === 0 || regexEmail.test(userFormData.email);
-  
+
   const userPassword = userFormData.password;
   const hasLower = /[a-z]/.test(userPassword);
   const hasUpper = /[A-Z]/.test(userPassword);
@@ -248,8 +256,16 @@ export default function AdminPanel() {
         doc.text("Reporte de Inventario - Admin", 14, 22);
         doc.setFontSize(11);
         doc.text(`Generado el: ${fechaActual} por ${autor}`, 14, 30);
-        const filas = productosProcesados.map(p => [ p.nombre, p.categoria, `$${Number(p.precio_base).toFixed(2)}`, p.activo ? 'Activo' : 'Inactivo' ]);
-        autoTable(doc, { startY: 36, head: [["Nombre", "Categoría", "Precio Base", "Estado"]], body: filas, theme: 'striped', headStyles: { fillColor: [26, 45, 33] } });
+        
+        // 🔥 NUEVO: Incluimos la columna Stock en el PDF
+        const filas = productosProcesados.map(p => [ 
+          p.nombre, 
+          p.categoria, 
+          `$${Number(p.precio_base).toFixed(2)}`, 
+          p.tipo_venta === 'bajo_pedido' ? 'Bajo Pedido' : p.stock, 
+          p.activo ? 'Activo' : 'Inactivo' 
+        ]);
+        autoTable(doc, { startY: 36, head: [["Nombre", "Categoría", "Precio Base", "Stock", "Estado"]], body: filas, theme: 'striped', headStyles: { fillColor: [26, 45, 33] } });
         doc.save(`Inventario_${new Date().toISOString().split('T')[0]}.pdf`);
 
       } else if (activeTab === 'usuarios') {
@@ -277,20 +293,27 @@ export default function AdminPanel() {
   // MANEJO FORMULARIO PRODUCTOS
   // ==========================================
   const handleFilterChange = (e) => setFiltros({ ...filtros, [e.target.name]: e.target.value });
-  const limpiarFiltros = () => { setFiltros({ busqueda: '', categoria: '', precioMin: '', precioMax: '', estado: '' }); setSortConfig({ key: null, direction: 'asc' }); };
+  const limpiarFiltros = () => { 
+    setFiltros({ busqueda: '', categoria: '', precioMin: '', precioMax: '', estado: '' });
+    setSortConfig({ key: null, direction: 'asc' }); 
+  };
 
-  const handleProductClear = () => { setFormData({ id_producto: null, nombre: '', precio_base: '', id_categoria: '', imagen_url: '' }); setIsEditing(false); setShowProductModal(false); };
+  const handleProductClear = () => { 
+    setFormData({ id_producto: null, nombre: '', precio_base: '', id_categoria: '', imagen_url: '', tipo_venta: 'prefabricado', stock: '' });
+    setIsEditing(false); 
+    setShowProductModal(false); 
+  };
 
   const handleProductSubmit = async (e) => {
     e.preventDefault();
     if (!isProductFormValid) return;
     const url = isEditing ? `${API_URL}/productos/${formData.id_producto}` : `${API_URL}/productos`;
     const method = isEditing ? 'PUT' : 'POST';
-
     try {
       const response = await fetch(url, {
         method, headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, nombre: formData.nombre.trim(), precio_base: Number(formData.precio_base), requesterId: currentUser.id })
+        // 🔥 NUEVO: Enviamos el stock transformado a número o 0
+        body: JSON.stringify({ ...formData, nombre: formData.nombre.trim(), precio_base: Number(formData.precio_base), stock: Number(formData.stock || 0), requesterId: currentUser.id })
       });
       if (response.ok) {
         alert(isEditing ? 'Producto actualizado' : 'Producto creado');
@@ -303,7 +326,15 @@ export default function AdminPanel() {
 
   const handleProductEdit = (producto) => {
     const cat = categorias.find(c => c.nombre === producto.categoria);
-    setFormData({ id_producto: producto.id_producto, nombre: producto.nombre, precio_base: producto.precio_base, id_categoria: cat ? cat.id_categoria : '', imagen_url: producto.imagen_url || '' });
+    setFormData({ 
+      id_producto: producto.id_producto, 
+      nombre: producto.nombre, 
+      precio_base: producto.precio_base, 
+      id_categoria: cat ? cat.id_categoria : '', 
+      imagen_url: producto.imagen_url || '',
+      tipo_venta: producto.tipo_venta || 'prefabricado',
+      stock: producto.stock || 0 // 🔥 NUEVO: Cargar el stock para editarlo
+    });
     setIsEditing(true);
     setShowProductModal(true);
   };
@@ -320,7 +351,7 @@ export default function AdminPanel() {
   // MANEJO FORMULARIO USUARIOS
   // ==========================================
   const handleUserClear = () => { 
-    setUserFormData({ id_usuario: null, nombre: '', email: '', password: '', rol: 'cliente' }); 
+    setUserFormData({ id_usuario: null, nombre: '', email: '', password: '', rol: 'cliente' });
     setIsUserEditing(false); 
     setShowUserModal(false); 
     setShowUserPassword(false); 
@@ -334,7 +365,7 @@ export default function AdminPanel() {
     try {
       const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...userFormData, requesterId: currentUser.id }) });
       if (response.ok) { 
-        alert(isUserEditing ? 'Usuario actualizado' : 'Usuario creado'); 
+        alert(isUserEditing ? 'Usuario actualizado' : 'Usuario creado');
         setUsuarios(await fetch(`${API_URL}/usuarios`).then(res => res.json())); 
         handleUserClear(); 
         cargarLogs(); 
@@ -343,7 +374,7 @@ export default function AdminPanel() {
   };
 
   const handleUserEdit = (usuario) => { 
-    setUserFormData({ id_usuario: usuario.id_usuario, nombre: usuario.nombre, email: usuario.email, password: '', rol: usuario.rol }); 
+    setUserFormData({ id_usuario: usuario.id_usuario, nombre: usuario.nombre, email: usuario.email, password: '', rol: usuario.rol });
     setIsUserEditing(true); 
     setShowUserModal(true); 
   };
@@ -416,17 +447,54 @@ export default function AdminPanel() {
                     <input type="text" name="nombre" value={formData.nombre} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} maxLength={30} required className={`bg-[#ccc] text-black/90 font-bold placeholder-black/40 p-3 w-full rounded outline-none focus:ring-2 ${!isNombreProductoValido ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
                     {!isNombreProductoValido && <span className="text-xs text-red-400 font-semibold mt-1 block">Solo letras y números.</span>}
                   </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Precio Base ($)</label>
-                    <input type="number" name="precio_base" step="0.01" min="0" value={formData.precio_base} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold placeholder-black/40 p-3 w-full rounded outline-none focus:ring-2 ${!isPrecioProductoValido ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
+                  
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Precio Base ($)</label>
+                      <input type="number" name="precio_base" step="0.01" min="0" value={formData.precio_base} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold placeholder-black/40 p-3 w-full rounded outline-none focus:ring-2 ${!isPrecioProductoValido ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Categoría</label>
+                      <select name="id_categoria" value={formData.id_categoria} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} required className="bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50">
+                        <option value="">Selecciona...</option>
+                        {categorias.map(c => <option key={c.id_categoria} value={c.id_categoria}>{c.nombre}</option>)}
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Categoría</label>
-                    <select name="id_categoria" value={formData.id_categoria} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} required className="bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50">
-                      <option value="">Selecciona...</option>
-                      {categorias.map(c => <option key={c.id_categoria} value={c.id_categoria}>{c.nombre}</option>)}
-                    </select>
+
+                  {/* 🔥 NUEVO: Formulario Dinámico para Tipo de Venta y Stock */}
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Tipo de Venta</label>
+                      <select 
+                        name="tipo_venta" 
+                        value={formData.tipo_venta} 
+                        onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} 
+                        required 
+                        className="bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50"
+                      >
+                        <option value="prefabricado">Prefabricado (Con Stock)</option>
+                        <option value="bajo_pedido">Bajo Pedido (Sin Stock fijo)</option>
+                      </select>
+                    </div>
+                    
+                    {formData.tipo_venta === 'prefabricado' && (
+                      <div className="flex-1">
+                        <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Cantidad Stock</label>
+                        <input 
+                          type="number" 
+                          name="stock" 
+                          min="0" 
+                          value={formData.stock} 
+                          onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} 
+                          required 
+                          className="bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50" 
+                          placeholder="Ej. 50" 
+                        />
+                      </div>
+                    )}
                   </div>
+
                   <div>
                     <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">URL Imagen</label>
                     <input type="text" name="imagen_url" value={formData.imagen_url} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} className="bg-[#ccc] text-black/90 font-bold placeholder-black/40 p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50" />
@@ -473,6 +541,8 @@ export default function AdminPanel() {
                   <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSort('nombre')}>Nombre {renderSortArrow(sortConfig, 'nombre')}</th>
                   <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSort('categoria')}>Categoría {renderSortArrow(sortConfig, 'categoria')}</th>
                   <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSort('precio_base')}>Precio {renderSortArrow(sortConfig, 'precio_base')}</th>
+                  {/* 🔥 NUEVO: Columna de Stock en la cabecera */}
+                  <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSort('stock')}>Stock {renderSortArrow(sortConfig, 'stock')}</th>
                   <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSort('activo')}>Estado {renderSortArrow(sortConfig, 'activo')}</th>
                   <th className="p-4 border-b border-white/10 text-center">Acciones</th>
                 </tr>
@@ -481,18 +551,41 @@ export default function AdminPanel() {
                 {productosPaginados.length > 0 ? productosPaginados.map(p => (
                   <tr key={p.id_producto} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${!p.activo ? 'opacity-50' : ''}`}>
                     <td className="p-4"><img src={p.imagen_url || `https://ui-avatars.com/api/?name=${p.nombre}&background=random`} alt={p.nombre} className="w-10 h-10 object-cover rounded-md border border-white/20" /></td>
-                    <td className="p-4 font-semibold text-white">{p.nombre}</td>
+                    <td className="p-4">
+                      <div className="font-semibold text-white">{p.nombre}</div>
+                      <span className={`text-xs px-2 py-0.5 mt-1 rounded inline-block font-bold uppercase tracking-wider ${
+                        p.tipo_venta === 'bajo_pedido' 
+                          ? 'bg-purple-900/60 text-purple-300 border border-purple-500/30' 
+                          : 'bg-blue-900/60 text-blue-300 border border-blue-500/30'
+                      }`}>
+                        {p.tipo_venta === 'bajo_pedido' ? 'Bajo Pedido' : 'Prefabricado'}
+                      </span>
+                    </td>
                     <td className="p-4 text-white/70 text-sm">{p.categoria}</td>
                     <td className="p-4 font-bold text-green-400">${Number(p.precio_base).toFixed(2)}</td>
-                    <td className="p-4">
-                      <span className={p.activo ? "bg-green-500/20 text-green-300 border border-green-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide" : "bg-red-500/20 text-red-300 border border-red-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide"}>{p.activo ? 'ACTIVO' : 'INACTIVO'}</span>
+                    
+                    {/* 🔥 NUEVO: Celda Visual del Stock */}
+                    <td className="p-4 font-bold text-lg">
+                      {p.tipo_venta === 'bajo_pedido' ? (
+                        <span className="text-purple-400" title="Bajo pedido, stock infinito">∞</span>
+                      ) : (
+                        <span className={p.stock < 10 ? 'text-red-400' : 'text-white'}>{p.stock}</span>
+                      )}
                     </td>
-                    <td className="p-4 flex justify-center gap-2 items-center h-full">
-                      <button onClick={() => handleProductEdit(p)} className="bg-yellow-600/80 text-yellow-100 border border-yellow-500/50 hover:bg-yellow-500 px-3 py-1.5 text-xs rounded-md font-bold transition-colors">Editar</button>
-                      <button onClick={() => handleProductToggleStatus(p)} className={`px-3 py-1.5 text-xs rounded-md font-bold transition-colors border ${p.activo ? 'bg-red-900/80 text-red-100 border-red-500/50 hover:bg-red-800' : 'bg-green-900/80 text-green-100 border-green-500/50 hover:bg-green-800'}`}>{p.activo ? 'Inhabilitar' : 'Habilitar'}</button>
+
+                    <td className="p-4">
+                      <span className={p.activo ? "bg-green-500/20 text-green-300 border border-green-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide" : "bg-red-500/20 text-red-300 border border-red-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide"}>
+                        {p.activo ? 'ACTIVO' : 'INACTIVO'}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center">
+                      <button onClick={() => handleProductEdit(p)} className="bg-blue-900/80 text-blue-100 px-3 py-1.5 rounded mr-2 hover:bg-blue-800 transition-colors border border-blue-500/50">Editar</button>
+                      <button onClick={() => handleProductToggleStatus(p)} className={`px-3 py-1.5 rounded transition-colors border ${p.activo ? 'bg-red-900/80 text-red-100 border-red-500/50 hover:bg-red-800' : 'bg-green-900/80 text-green-100 border-green-500/50 hover:bg-green-800'}`}>
+                        {p.activo ? 'Inhabilitar' : 'Habilitar'}
+                      </button>
                     </td>
                   </tr>
-                )) : <tr><td colSpan="6" className="p-8 text-center text-white/60 font-medium">No se encontraron productos.</td></tr>}
+                )) : <tr><td colSpan="7" className="p-8 text-center text-white/60 font-medium">No se encontraron productos.</td></tr>}
               </tbody>
             </table>
             <PaginationControls totalItems={productosProcesados.length} currentPage={currentPageProd} setCurrentPage={setCurrentPageProd} />
@@ -505,7 +598,6 @@ export default function AdminPanel() {
       {/* ========================================== */}
       {activeTab === 'usuarios' && (
         <div className="animate-fade-in">
-          {/* Modal Usuarios */}
           {showUserModal && (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-center items-center z-50 p-4">
               <div className="bg-[#132018] border border-white/20 p-8 rounded-2xl shadow-2xl max-w-lg w-full relative">
@@ -526,20 +618,8 @@ export default function AdminPanel() {
                     {!isUserEditing ? (
                       <>
                         <div className="relative">
-                          <input 
-                            type={showUserPassword ? "text" : "password"} 
-                            name="password" 
-                            maxLength={32} 
-                            value={userFormData.password} 
-                            onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} 
-                            required 
-                            className={`bg-[#ccc] text-black/90 font-bold p-3 pr-20 w-full rounded outline-none focus:ring-2 ${!finalIsUserPassValid && userFormData.password.length > 0 ? 'ring-red-500' : 'focus:ring-green-500/50'}`} 
-                          />
-                          <button 
-                            type="button"
-                            onClick={() => setShowUserPassword(!showUserPassword)}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs uppercase font-bold text-black/60 hover:text-black transition-colors"
-                          >
+                          <input type={showUserPassword ? "text" : "password"} name="password" maxLength={32} value={userFormData.password} onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold p-3 pr-20 w-full rounded outline-none focus:ring-2 ${!finalIsUserPassValid && userFormData.password.length > 0 ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
+                          <button type="button" onClick={() => setShowUserPassword(!showUserPassword)} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs uppercase font-bold text-black/60 hover:text-black transition-colors" >
                             {showUserPassword ? "Ocultar" : "Mostrar"}
                           </button>
                         </div>
@@ -556,18 +636,18 @@ export default function AdminPanel() {
                               <li className={hasUpper ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasUpper ? '✓' : '○'} Mayúscula</li>
                               <li className={hasLower ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasLower ? '✓' : '○'} Minúscula</li>
                               <li className={hasNumber ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasNumber ? '✓' : '○'} Número</li>
-                              <li className={hasSpecial ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasSpecial ? '✓' : '○'} Especial (@$!)</li>
+                              <li className={hasSpecial ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasSpecial ? '✓' : '○'} Caract. Especial</li>
                               <li className={hasNoSpace ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasNoSpace ? '✓' : '○'} Sin espacios</li>
                             </ul>
                           </div>
                         )}
                       </>
                     ) : (
-                      <div className="border border-white/10 bg-white/5 text-white/50 text-sm font-semibold flex items-center p-3 w-full rounded">Contraseña protegida (Usa Reset Pass para cambiar)</div>
+                      <input type="password" disabled value="********" className="bg-white/5 text-white/40 font-bold p-3 w-full rounded outline-none border border-transparent cursor-not-allowed" />
                     )}
                   </div>
                   <div>
-                    <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Rol del Sistema</label>
+                    <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Rol en el Sistema</label>
                     <select name="rol" value={userFormData.rol} onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50 ${userFormData.id_usuario === currentUser.id ? 'opacity-70 cursor-not-allowed' : ''}`} disabled={userFormData.id_usuario === currentUser.id}>
                       {rolesDisponibles.map(rol => <option key={rol} value={rol}>{rol.charAt(0).toUpperCase() + rol.slice(1)}</option>)}
                     </select>
@@ -601,23 +681,25 @@ export default function AdminPanel() {
                 </tr>
               </thead>
               <tbody>
-                {usuariosPaginados.map(u => (
+                {usuariosPaginados.length > 0 ? usuariosPaginados.map(u => (
                   <tr key={u.id_usuario} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${!u.activo ? 'opacity-50' : ''}`}>
-                    <td className="p-4 font-semibold text-white">{u.nombre} {currentUser.id === u.id_usuario && <span className="ml-2 bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Tú</span>}</td>
+                    <td className="p-4 font-semibold text-white">{u.nombre}</td>
                     <td className="p-4 text-white/70 text-sm">{u.email}</td>
-                    <td className="p-4 uppercase text-xs font-bold tracking-wider text-green-400">{u.rol}</td>
+                    <td className="p-4"><span className="bg-white/10 text-white/80 border border-white/20 px-2.5 py-1 rounded text-xs font-bold uppercase tracking-widest">{u.rol}</span></td>
                     <td className="p-4">
-                      <span className={u.activo ? "bg-green-500/20 text-green-300 border border-green-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide" : "bg-red-500/20 text-red-300 border border-red-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide"}>{u.activo ? 'ACTIVO' : 'INACTIVO'}</span>
+                      <span className={u.activo ? "bg-green-500/20 text-green-300 border border-green-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide" : "bg-red-500/20 text-red-300 border border-red-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide"}>
+                        {u.activo ? 'ACTIVO' : 'INHABILITADO'}
+                      </span>
                     </td>
-                    <td className="p-4 flex justify-center gap-2 items-center h-full">
-                      <button onClick={() => handleUserEdit(u)} className="bg-yellow-600/80 text-yellow-100 border border-yellow-500/50 hover:bg-yellow-500 px-3 py-1.5 text-xs rounded-md font-bold transition-colors">Editar</button>
-                      {(currentUser?.rol === 'admin' || currentUser?.rol === 'gerente') && <button onClick={() => handleResetPassword(u.id_usuario)} className="bg-purple-900/80 text-purple-100 border border-purple-500/50 hover:bg-purple-800 px-3 py-1.5 text-xs rounded-md font-bold transition-colors">Reset Pass</button>}
-                      <button onClick={() => handleUserToggleStatus(u)} disabled={currentUser.id === u.id_usuario} className={`px-3 py-1.5 text-xs rounded-md font-bold transition-colors border ${currentUser.id === u.id_usuario ? 'bg-white/10 text-white/30 border-transparent cursor-not-allowed' : (u.activo ? 'bg-red-900/80 text-red-100 border-red-500/50 hover:bg-red-800' : 'bg-green-900/80 text-green-100 border-green-500/50 hover:bg-green-800')}`}>
+                    <td className="p-4 text-center">
+                      <button onClick={() => handleUserEdit(u)} className="bg-blue-900/80 text-blue-100 px-3 py-1.5 rounded mr-2 hover:bg-blue-800 transition-colors border border-blue-500/50">Editar</button>
+                      <button onClick={() => handleResetPassword(u.id_usuario)} className="bg-orange-900/80 text-orange-100 px-3 py-1.5 rounded mr-2 hover:bg-orange-800 transition-colors border border-orange-500/50" title="Reiniciar a 'pass123'">🔑 Reset Pass</button>
+                      <button onClick={() => handleUserToggleStatus(u)} disabled={u.id_usuario === currentUser.id} className={`px-3 py-1.5 rounded transition-colors border ${u.id_usuario === currentUser.id ? 'bg-white/5 text-white/30 border-transparent cursor-not-allowed' : (u.activo ? 'bg-red-900/80 text-red-100 border-red-500/50 hover:bg-red-800' : 'bg-green-900/80 text-green-100 border-green-500/50 hover:bg-green-800')}`}>
                         {u.activo ? 'Inhabilitar' : 'Habilitar'}
                       </button>
                     </td>
                   </tr>
-                ))}
+                )) : <tr><td colSpan="5" className="p-8 text-center text-white/60 font-medium">No se encontraron usuarios.</td></tr>}
               </tbody>
             </table>
             <PaginationControls totalItems={usuariosProcesados.length} currentPage={currentPageUser} setCurrentPage={setCurrentPageUser} />
@@ -637,14 +719,14 @@ export default function AdminPanel() {
               <button onClick={exportarPDF} className="bg-red-900/80 text-red-100 border border-red-500/30 hover:bg-red-800 font-bold px-5 py-2 rounded-md transition-all shadow-lg">📄 Exportar a PDF</button>
             </div>
           </div>
-          
+
           <div className="overflow-x-auto shadow-2xl border border-white/20 rounded-xl bg-white/5 backdrop-blur-sm">
             <table className="w-full text-left border-collapse">
               <thead className="bg-[#0a120e] text-white/90 uppercase text-xs tracking-wider">
                 <tr>
-                  <th className="p-4 border-b border-white/10 w-48 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('fecha')}>Fecha y Hora {renderSortArrow(sortLogsConfig, 'fecha')}</th>
-                  <th className="p-4 border-b border-white/10 w-48 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('autor')}>Autor {renderSortArrow(sortLogsConfig, 'autor')}</th>
-                  <th className="p-4 border-b border-white/10 w-32 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('accion')}>Acción {renderSortArrow(sortLogsConfig, 'accion')}</th>
+                  <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('fecha')}>Fecha y Hora {renderSortArrow(sortLogsConfig, 'fecha')}</th>
+                  <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('autor')}>Autor {renderSortArrow(sortLogsConfig, 'autor')}</th>
+                  <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('accion')}>Acción {renderSortArrow(sortLogsConfig, 'accion')}</th>
                   <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('detalles')}>Detalles {renderSortArrow(sortLogsConfig, 'detalles')}</th>
                 </tr>
               </thead>
@@ -663,7 +745,6 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
