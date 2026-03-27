@@ -85,15 +85,18 @@ function App() {
   const carritosPorUsuario = useCartStore((state) => state.carritosPorUsuario);
   const removeFromCart = useCartStore((state) => state.removeFromCart);
   
-  // TRAEMOS LAS FUNCIONES DE CANTIDAD
+  // TRAEMOS LAS FUNCIONES DE CANTIDAD Y TOTALES INTELIGENTES
   const addToCart = useCartStore((state) => state.addToCart);
   const decreaseQuantity = useCartStore((state) => state.decreaseQuantity);
+  const getCartTotals = useCartStore((state) => state.getCartTotals); // ¡La nueva función!
   
   const user = useAuthStore((state) => state.user);
   const userId = user ? user.id : 'guest';
 
   const cartItems = carritosPorUsuario[userId] || [];
-  const cartTotal = cartItems.reduce((total, item) => total + (item.precio_base * item.cantidad), 0);
+  
+  // Usamos el Store para obtener los cálculos exactos
+  const { subtotal, discountPercent, totalDiscount, finalTotal, promoMessage } = getCartTotals(userId);
 
   return (
     <BrowserRouter>
@@ -115,7 +118,7 @@ function App() {
             <div className="relative w-full max-w-md bg-white h-full shadow-xl flex flex-col">
               <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                 <h2 className="font-bold text-lg">Your cart</h2>
-                <button onClick={toggleCart} className="font-bold text-xl">✕</button>
+                <button onClick={toggleCart} className="font-bold text-xl hover:text-red-500 transition">✕</button>
               </div>
               
               <div className="p-4 flex-1 overflow-y-auto">
@@ -154,17 +157,45 @@ function App() {
                 )}
               </div>
 
+              {/* ================================================== */}
+              {/* FOOTER DEL CARRITO: AHORA CON INTELIGENCIA DE DESCUENTOS */}
+              {/* ================================================== */}
               {cartItems.length > 0 && (
-                <div className="p-4 border-t bg-gray-50">
-                  <div className="flex justify-between font-bold text-lg mb-4">
+                <div className="p-4 border-t bg-gray-50 flex flex-col gap-3">
+                  
+                  {/* Mensaje Promocional */}
+                  {promoMessage && (
+                    <div className="bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm p-3 rounded-md text-center font-bold shadow-sm">
+                      ✨ {promoMessage}
+                    </div>
+                  )}
+
+                  {/* Subtotal (Solo si hay descuento aplicado) */}
+                  {discountPercent > 0 && (
+                    <div className="flex justify-between text-gray-500 text-sm font-medium mt-1">
+                      <span>Subtotal:</span>
+                      <span>${subtotal.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {/* Descuento por Volumen */}
+                  {discountPercent > 0 && (
+                    <div className="flex justify-between text-green-600 text-sm font-bold">
+                      <span>Descuento por volumen ({discountPercent}%):</span>
+                      <span>-${totalDiscount.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {/* Total Final */}
+                  <div className="flex justify-between font-black text-xl mb-2 mt-1">
                     <span>Total:</span>
-                    <span>${cartTotal.toFixed(2)}</span>
+                    <span>${finalTotal.toFixed(2)}</span>
                   </div>
                   
                   <Link 
                     to="/checkout"
                     onClick={toggleCart}
-                    className="block w-full text-center bg-black text-white py-4 font-bold tracking-widest uppercase hover:bg-gray-800"
+                    className="block w-full text-center bg-black text-white py-4 font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors rounded-sm"
                   >
                     Ir al Pago
                   </Link>

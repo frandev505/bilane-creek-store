@@ -3,307 +3,256 @@ import { useAuthStore } from '../store/authStore';
 import { useCartStore } from '../store/cartStore'; 
 import AdminPanel from '../components/AdminPanel';
 
+// ==========================================
+// COMPONENTE: LOGO SVG VECTORIAL (Arreglo del logo roto)
+// Hecho con vectores para que cargue instantáneo, sea nítido y no dependa de enlaces externos.
+// ==========================================
+const BilaneCreekLogo = ({ className }) => (
+  <svg 
+    viewBox="0 0 300 100" 
+    className={className} 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    {/* Fondo o forma abstracta sutil detrás del texto */}
+    <path d="M50 80C20 80 10 50 40 20C70 -10 100 20 130 10C160 0 190 30 220 20C250 10 280 40 250 70C220 100 190 70 160 80C130 90 100 60 70 70C40 80 80 80 50 80Z" fill="white" fillOpacity="0.03"/>
+    
+    {/* Texto Principal "BILANE CREEK" */}
+    <text 
+      x="50%" 
+      y="55%" 
+      textAnchor="middle" 
+      fill="white" 
+      fontFamily="Inter, sans-serif" 
+      fontWeight="900" 
+      fontSize="38" 
+      letterSpacing="-0.05em"
+      className="tracking-tighter"
+    >
+      BILANE CREEK
+    </text>
+    
+    {/* Subtítulo o lema sutil */}
+    <text 
+      x="50%" 
+      y="80%" 
+      textAnchor="middle" 
+      fill="white" 
+      fillOpacity="0.6"
+      fontFamily="Inter, sans-serif" 
+      fontWeight="500" 
+      fontSize="12" 
+      letterSpacing="0.4em"
+    >
+      FAVOURITE THREADS
+    </text>
+    
+    {/* Líneas decorativas */}
+    <line x1="60" y1="68" x2="240" y2="68" stroke="white" strokeOpacity="0.1" strokeWidth="1"/>
+  </svg>
+);
+
 export default function MyAccount() {
   const user = useAuthStore(state => state.user);
   const login = useAuthStore(state => state.login);
   const logout = useAuthStore(state => state.logout);
 
-  // ==========================================
-  // ESTADOS UNIFICADOS (LOGIN Y REGISTRO)
-  // ==========================================
-  const [isLoginMode, setIsLoginMode] = useState(true); // true = Login, false = Registro
+  // ESTADOS LOGIN
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPass, setLoginPass] = useState('');
   
-  const [nombre, setNombre] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [mostrarPassword, setMostrarPassword] = useState(false); // 👁️ Ocultar/Mostrar
+  // ESTADOS REGISTRO
+  const [regNombre, setRegNombre] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPass, setRegPass] = useState('');
   
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // ==========================================
-  // EXPRESIONES REGULARES (REGEX)
-  // ==========================================
+  // VALIDACIONES BÁSICAS
   const regexEmail = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  const regexNombre = /^[a-zA-ZÀ-ÿ\s'-]+$/;
+  const isRegValido = regNombre.length > 2 && regexEmail.test(regEmail) && regPass.length >= 6;
 
-  // Evaluaciones en tiempo real
-  const isEmailValido = email.length === 0 || regexEmail.test(email);
-  const isNombreValido = nombre.length === 0 || regexNombre.test(nombre);
-
-  // ==========================================
-  // LÓGICA DE VALIDACIÓN DE CONTRASEÑA
-  // ==========================================
-  const hasLower = /[a-z]/.test(password);
-  const hasUpper = /[A-Z]/.test(password);
-  const hasNumber = /\d/.test(password);
-  const hasSpecial = /[\W_]/.test(password);
-  const isValidLength = password.length >= 6 && password.length <= 32;
-
-  let strengthScore = 0;
-  if (hasLower) strengthScore++;
-  if (hasUpper) strengthScore++;
-  if (hasNumber) strengthScore++;
-  if (hasSpecial) strengthScore++;
-  if (isValidLength) strengthScore++;
-
-  const getStrengthData = () => {
-    if (password.length === 0) return { width: '0%', color: 'bg-gray-200', text: '' };
-    if (strengthScore <= 2) return { width: '25%', color: 'bg-red-500', text: 'Muy Débil' };
-    if (strengthScore === 3) return { width: '50%', color: 'bg-orange-500', text: 'Regular' };
-    if (strengthScore === 4) return { width: '75%', color: 'bg-yellow-500', text: 'Buena' };
-    return { width: '100%', color: 'bg-green-500', text: 'Fuerte y Segura' };
-  };
-
-  const { width, color, text } = getStrengthData();
-  const isPasswordValid = strengthScore === 5;
-
-  const isFormularioRegistroValido = isPasswordValid && regexNombre.test(nombre) && regexEmail.test(email);
-
-  // ==========================================
-  // CAMBIAR ENTRE MODOS Y LIMPIAR ESTADOS
-  // ==========================================
-  const toggleMode = () => {
-    setIsLoginMode(!isLoginMode);
+  // MANEJADOR LOGIN
+  const handleLogin = async (e) => {
+    e.preventDefault();
     setErrorMsg('');
-    setSuccessMsg('');
-    setPassword(''); // Limpiamos la contraseña por seguridad al cambiar
-    setMostrarPassword(false);
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:3000/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPass })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        login(data.usuario);
+        // useCartStore.getState().clearCart('guest'); // Opcional, dependiendo de tu lógica de carrito
+      } else {
+        setErrorMsg(data.error || 'Credenciales inválidas');
+      }
+    } catch (err) {
+      setErrorMsg('Error de conexión con el servidor');
+    } finally { setLoading(false); }
   };
 
-  // ==========================================
-  // MANEJO DEL SUBMIT (LOGIN O REGISTRO)
-  // ==========================================
-  const handleSubmit = async (e) => {
+  // MANEJADOR REGISTRO
+  const handleRegister = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+    if(!isRegValido) return setErrorMsg('Por favor, revisa los datos del registro.');
 
-    if (isLoginMode) {
-      // 🔓 LÓGICA DE INICIO DE SESIÓN
-      try {
-        const response = await fetch('http://localhost:3000/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-        const data = await response.json();
-        
-        if (response.ok) {
-          login(data.usuario);
-          useCartStore.getState().clearCart('guest');
-        } else {
-          setErrorMsg(data.error || 'Credenciales inválidas');
-        }
-      } catch (err) {
-        setErrorMsg('Error al conectar con el servidor');
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:3000/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: regNombre, email: regEmail, password: regPass })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setSuccessMsg('¡Cuenta creada! Ya puedes iniciar sesión a la izquierda.');
+        setLoginEmail(regEmail);
+        setRegNombre(''); setRegEmail(''); setRegPass('');
+      } else {
+        setErrorMsg(data.error || 'Error al crear cuenta. Es posible que el email ya exista.');
       }
-    } else {
-      // 📝 LÓGICA DE REGISTRO
-      if (!isFormularioRegistroValido) {
-        setErrorMsg('Por favor, revisa que todos los campos sean correctos.');
-        return;
-      }
-
-      try {
-        const response = await fetch('http://localhost:3000/api/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nombre, email, password })
-        });
-        const data = await response.json();
-        
-        if (response.ok) {
-          setSuccessMsg('¡Cuenta creada con éxito! Ahora puedes iniciar sesión.');
-          setNombre('');
-          setPassword('');
-          setIsLoginMode(true); // Cambiar a login automáticamente
-        } else {
-          setErrorMsg(data.error || 'Error al crear la cuenta');
-        }
-      } catch (err) {
-        setErrorMsg('No se pudo conectar con el servidor');
-      }
-    }
+    } catch (err) {
+      setErrorMsg('Error de conexión con el servidor');
+    } finally { setLoading(false); }
   };
 
-  // ==========================================
-  // VISTA: USUARIO LOGUEADO (SIN CAMBIOS ESTÉTICOS)
-  // ==========================================
+  // VISTA DE USUARIO AUTENTICADO
   if (user) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-16 min-h-[60vh]">
-        <div className="flex justify-between items-center mb-8 border-b pb-4">
-          <h1 className="text-3xl font-black uppercase tracking-tighter">My Account</h1>
-          <button onClick={logout} className="text-gray-500 hover:text-black font-semibold">Cerrar Sesión</button>
+        <div className="flex justify-between items-center mb-12 border-b pb-4 border-gray-200">
+          <h1 className="text-3xl font-black uppercase tracking-tighter text-gray-900">My Account</h1>
+          <button onClick={logout} className="text-sm text-gray-500 hover:text-black font-semibold transition">Cerrar Sesión</button>
         </div>
-        
-        <p className="text-lg">Hola, <span className="font-bold">{user.nombre}</span>.</p>
-        
-        {user.rol === 'admin' ? (
-          <AdminPanel />
-        ) : (
-          <div className="mt-8 p-6 bg-gray-50 rounded border">
-            <h2 className="font-bold text-xl mb-4">Historial de Pedidos</h2>
-            <p className="text-gray-500">Aún no has realizado ningún pedido.</p>
+        <p className="text-xl">Hola, <span className="font-bold">{user.nombre}</span>.</p>
+        {user.rol === 'admin' ? <AdminPanel /> : (
+          <div className="mt-12 p-8 bg-gray-50 rounded-xl border border-gray-100 shadow-inner">
+            <h2 className="font-bold text-2xl mb-5 text-gray-900">Historial de Pedidos</h2>
+            <p className="text-gray-500">Consulta tus compras en la sección de historial de la tienda.</p>
           </div>
         )}
       </div>
     );
   }
 
-  // ==========================================
-  // VISTA: FORMULARIO ÚNICO CON ESTÉTICA GLASSMorphism 👁️✨
-  // ==========================================
+  // VISTA DE ACCESO (LADO A LADO CON ESTILO GLASSMorphism)
   return (
-    // CONTENEDOR PRINCIPAL CON FONDO DEGRADADO VERDE
-    <div className="min-h-screen flex items-center justify-center py-24 px-4 bg-fixed bg-no-repeat" style={{ background: "radial-gradient(circle at 10% 20%, rgb(40, 60, 45) 0%, rgb(10, 20, 15) 100%)" }}>
+    <div className="min-h-screen flex items-center justify-center py-20 px-4" style={{ background: "radial-gradient(circle at 10% 20%, rgb(40, 60, 45) 0%, rgb(10, 20, 15) 100%)" }}>
       
-      {/* TARJETA DE CRISTAL RELATIVA */}
-      <div className="max-w-md w-full relative bg-white/10 backdrop-blur-xl border border-white/20 p-12 pt-16 shadow-lg rounded-xl">
+      <div className="max-w-6xl w-full bg-white/10 backdrop-blur-xl border border-white/20 p-8 md:p-14 shadow-2xl rounded-3xl overflow-hidden relative">
         
-        {/* ICONO DE PERFIL CIRCULAR SUPERIOR */}
-        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-[#1a2d21] rounded-full p-4 border-2 border-white/40 shadow-md">
-          <svg className="w-12 h-12 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
-        </div>
-        
-        {/* TÍTULO PRINCIPAL (Texto claro) */}
-        <h2 className="text-4xl font-black uppercase mb-8 tracking-tighter text-center text-white/95">
-          {isLoginMode ? 'Log In' : 'Register'}
-        </h2>
-        
-        {/* MENSAJES DE ERROR Y ÉXITO */}
-        {errorMsg && <p className="bg-red-100/10 text-red-200 p-3 mb-4 rounded text-sm font-semibold text-center border border-red-500/20">{errorMsg}</p>}
-        {successMsg && <p className="bg-green-100/10 text-green-200 p-3 mb-4 rounded text-sm font-semibold text-center border border-green-500/20">{successMsg}</p>}
-        
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-          
-          {/* CAMPO NOMBRE (Solo Registro) */}
-          {!isLoginMode && (
-            <div>
-              <input 
-                type="text" 
-                placeholder="Full Name *" 
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                className={`w-full bg-[#ccc] text-black/80 font-medium placeholder-black/40 p-3 px-5 rounded-md focus:outline-none focus:ring-1 transition-colors ${!isNombreValido ? 'ring-red-500' : 'focus:ring-white/40'}`}
-                required={!isLoginMode}
-              />
-              {!isNombreValido && (
-                <p className="text-red-200 text-xs mt-1.5 font-semibold px-2">
-                  Solo letras, acentos y espacios son permitidos.
-                </p>
-              )}
-            </div>
-          )}
+        {/* Adorno visual de fondo */}
+        <div className="absolute -top-10 -left-10 w-40 h-40 bg-white/5 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-20 -right-20 w-60 h-60 bg-white/5 rounded-full blur-3xl"></div>
 
-          {/* CAMPO EMAIL CON ICONO PERSONA */}
-          <div>
-            <div className={`w-full flex items-center bg-[#ccc] rounded-md transition-colors ${!isEmailValido && !isLoginMode ? 'ring-1 ring-red-500' : ''}`}>
-              {/* Icono persona */}
-              <div className="w-12 flex justify-center border-r border-black/10 py-3 text-black/40">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </div>
+        {/* CABECERA UNIFICADA CON EL NUEVO LOGO SVG */}
+        <div className="text-center mb-16 relative z-10">
+          <BilaneCreekLogo className="w-64 mx-auto mb-2" />
+          <h2 className="text-2xl font-black text-white uppercase tracking-[0.3em] mt-4 opacity-90">Acceso Clientes</h2>
+          <p className="text-white/60 text-sm mt-1">Favourite Threads - Tienda Oficial</p>
+        </div>
+
+        {/* MENSAJES DE ESTADO */}
+        {errorMsg && (
+          <div className="bg-red-500/15 text-red-100 p-4 mb-8 rounded-lg text-center text-sm border border-red-500/40 font-medium animate-pulse relative z-10">
+            ⚠️ {errorMsg}
+          </div>
+        )}
+        {successMsg && (
+          <div className="bg-green-500/15 text-green-100 p-4 mb-8 rounded-lg text-center text-sm border border-green-500/40 font-medium relative z-10">
+            ✅ {successMsg}
+          </div>
+        )}
+
+        {/* CONTENEDOR FLEXIBLE LADO A LADO */}
+        <div className="flex flex-col md:flex-row gap-12 md:gap-20 relative z-10">
+          
+          {/* COLUMNA 1: LOGIN (Estilo Minimalista Oscuro) */}
+          <div className="flex-1">
+            <h3 className="text-white font-black uppercase tracking-widest text-lg mb-10 border-b border-white/10 pb-3">Ya soy cliente</h3>
+            <form onSubmit={handleLogin} className="space-y-6">
               <input 
                 type="email" 
-                placeholder="Email Address *" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="flex-1 bg-transparent text-black/80 font-medium placeholder-black/40 p-3 px-5 focus:outline-none"
+                placeholder="Email Address" 
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-lg focus:outline-none focus:bg-white/10 focus:border-white/30 transition placeholder-white/30"
                 required
               />
-            </div>
-            {!isEmailValido && !isLoginMode && (
-              <p className="text-red-200 text-xs mt-1.5 font-semibold px-2">
-                Ingresa un formato de correo válido (ej. tu@correo.com).
-              </p>
-            )}
-          </div>
-          
-          {/* CAMPO CONTRASEÑA CON ICONO CANDADO Y MOSTRAR */}
-          <div>
-            <div className="w-full flex items-center bg-[#ccc] rounded-md relative">
-              {/* Icono candado */}
-              <div className="w-12 flex justify-center border-r border-black/10 py-3 text-black/40">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              </div>
               <input 
-                type={mostrarPassword ? "text" : "password"} 
-                placeholder="Password *" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="flex-1 bg-transparent text-black/80 font-medium placeholder-black/40 p-3 px-5 pr-20 focus:outline-none"
+                type="password" 
+                placeholder="Password" 
+                value={loginPass}
+                onChange={(e) => setLoginPass(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-lg focus:outline-none focus:bg-white/10 focus:border-white/30 transition placeholder-white/30"
                 required
-                maxLength={isLoginMode ? undefined : 32}
               />
               <button 
-                type="button"
-                onClick={() => setMostrarPassword(!mostrarPassword)}
-                className="absolute right-4 text-xs text-black/60 hover:text-black font-semibold uppercase tracking-wider transition-colors"
+                type="submit"
+                disabled={loading}
+                className="w-full bg-white text-black font-black uppercase text-sm tracking-widest py-5 rounded-lg hover:bg-gray-200 transition-all duration-300 shadow-md disabled:opacity-50 disabled:cursor-not-allowed mt-4"
               >
-                {mostrarPassword ? "Hide" : "Show"}
+                {loading ? 'Procesando...' : 'Log In'}
               </button>
-            </div>
-            
-            {/* BARRA DE FUERZA Y REQUISITOS (Solo en Registro) */}
-            {!isLoginMode && password.length > 0 && (
-              <div className="mt-4 p-4 bg-gray-50/10 border border-white/10 text-white/80 text-sm rounded-md">
-                <div className="h-2 w-full bg-gray-200/20 rounded-full overflow-hidden mb-1">
-                  <div className={`h-full transition-all duration-300 ease-in-out ${color}`} style={{ width: width }}></div>
-                </div>
-                <p className={`text-xs font-bold text-right mb-3 ${color.replace('bg-', 'text-')}`}>
-                  {text}
-                </p>
-
-                <p className="font-bold mb-2">La contraseña debe contener:</p>
-                <ul className="grid grid-cols-1 gap-1 text-xs">
-                  <li className={isValidLength ? 'text-green-300 font-semibold' : 'text-white/60'}>{isValidLength ? '✓' : '○'} Entre 6 y 32 caracteres</li>
-                  <li className={hasUpper ? 'text-green-300 font-semibold' : 'text-white/60'}>{hasUpper ? '✓' : '○'} Una mayúscula</li>
-                  <li className={hasLower ? 'text-green-300 font-semibold' : 'text-white/60'}>{hasLower ? '✓' : '○'} Una minúscula</li>
-                  <li className={hasNumber ? 'text-green-300 font-semibold' : 'text-white/60'}>{hasNumber ? '✓' : '○'} Un número</li>
-                  <li className={hasSpecial ? 'text-green-300 font-semibold' : 'text-white/60'}>{hasSpecial ? '✓' : '○'} Un carácter especial</li>
-                </ul>
-              </div>
-            )}
+            </form>
           </div>
 
-          {!isLoginMode && (
-            <p className="text-xs text-white/60 mt-1">
-              Your personal data will be used to support your experience throughout this website.
-            </p>
-          )}
-          
-          {/* BOTÓN SUBMIT OSCURO */}
-          <button 
-            type="submit" 
-            disabled={!isLoginMode && !isFormularioRegistroValido}
-            className={`w-full bg-[#1a2d21] text-white/90 border border-white/20 font-bold uppercase tracking-widest py-4 mt-2 transition-colors rounded-md shadow focus:ring-1 focus:ring-white/40 focus:outline-none ${
-              !isLoginMode && !isFormularioRegistroValido 
-                ? 'opacity-60 cursor-not-allowed' 
-                : 'hover:bg-green-900'
-            }`}
-          >
-            {isLoginMode ? 'Log In' : 'Register'}
-          </button>
-        </form>
+          {/* SEPARADOR VISUAL (Solo en desktop) */}
+          <div className="hidden md:block w-px bg-white/10 self-stretch"></div>
 
-        {/* BOTÓN PARA ALTERNAR (Texto claro) */}
-        <div className="mt-8 text-center">
-          <button 
-            type="button" 
-            onClick={toggleMode}
-            className="text-sm font-semibold text-white/70 hover:text-white transition-colors underline underline-offset-4 tracking-tight"
-          >
-            {isLoginMode ? "¿No tienes cuenta? Crea una aquí" : "¿Ya tienes cuenta? Inicia sesión"}
-          </button>
+          {/* COLUMNA 2: REGISTRO (Estilo Bordeado Claro) */}
+          <div className="flex-1">
+            <h3 className="text-white font-black uppercase tracking-widest text-lg mb-10 border-b border-white/10 pb-3">Crear Cuenta</h3>
+            <form onSubmit={handleRegister} className="space-y-6">
+              <input 
+                type="text" 
+                placeholder="Full Name" 
+                value={regNombre}
+                onChange={(e) => setRegNombre(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-lg focus:outline-none focus:bg-white/10 focus:border-white/30 transition placeholder-white/30"
+                required
+              />
+              <input 
+                type="email" 
+                placeholder="Email Address" 
+                value={regEmail}
+                onChange={(e) => setRegEmail(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-lg focus:outline-none focus:bg-white/10 focus:border-white/30 transition placeholder-white/30"
+                required
+              />
+              <input 
+                type="password" 
+                placeholder="Password (min. 6 chars)" 
+                value={regPass}
+                onChange={(e) => setRegPass(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 text-white p-4 rounded-lg focus:outline-none focus:bg-white/10 focus:border-white/30 transition placeholder-white/30"
+                required
+              />
+              <div className="flex items-start gap-2 pt-2">
+                <input type="checkbox" id="terms" required className="mt-1 accent-white"/>
+                <label htmlFor="terms" className="text-xs text-white/50 uppercase tracking-tight leading-snug cursor-pointer">
+                  Acepto recibir actualizaciones exclusivas y los términos de servicio de Bilane Creek.
+                </label>
+              </div>
+              <button 
+                type="submit"
+                disabled={loading || !isRegValido}
+                className="w-full border-2 border-white text-white font-black uppercase text-sm tracking-widest py-5 rounded-lg hover:bg-white hover:text-black transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed mt-3"
+              >
+                {loading ? 'Creando...' : 'Registrarse'}
+              </button>
+            </form>
+          </div>
+
         </div>
-
       </div>
     </div>
   );

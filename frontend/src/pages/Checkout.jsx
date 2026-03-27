@@ -12,7 +12,8 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_t
 // ==========================================
 // COMPONENTE INTERNO: EL FORMULARIO DE PAGO
 // ==========================================
-const CheckoutForm = ({ totalGeneral, cartItems, userId, isFormValid, formData }) => {
+// 👇 1. Recibimos las nuevas props aquí 👇
+const CheckoutForm = ({ totalGeneral, cartItems, userId, isFormValid, formData, subtotal, discountPercent, totalDiscount, costoEnvio }) => {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
@@ -44,15 +45,20 @@ const CheckoutForm = ({ totalGeneral, cartItems, userId, isFormValid, formData }
           body: JSON.stringify({
             id_usuario: userId === 'guest' ? null : userId,
             total: totalGeneral,
+            // 👇 2. Enviamos los datos para la factura congelada en el tiempo 👇
+            subtotal_original: subtotal,
+            porcentaje_descuento: discountPercent,
+            dinero_descontado: totalDiscount,
+            costo_envio: costoEnvio,
             items: cartItems,
-            datos_envio: formData // Enviamos los datos validados al backend
+            datos_envio: formData 
           })
         });
         
         clearCart(userId);
         alert("¡Pago exitoso! Tu pedido ha sido procesado.");
         
-        // 🔥 EL CAMBIO ESTÁ AQUÍ: Redirigimos al historial de compras 🔥
+        // Redirigimos al historial de compras
         navigate('/mis-compras');
         
       } catch (err) {
@@ -67,7 +73,6 @@ const CheckoutForm = ({ totalGeneral, cartItems, userId, isFormValid, formData }
       <PaymentElement />
       {error && <div className="text-red-600 bg-red-50 p-3 rounded text-sm font-medium">{error}</div>}
       <button 
-        // ¡Magia aquí! Bloqueamos el botón si el formulario de arriba tiene errores o está vacío
         disabled={!stripe || isProcessing || !isFormValid} 
         className="w-full bg-black text-white py-4 rounded font-bold uppercase tracking-widest hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
       >
@@ -94,11 +99,17 @@ export default function Checkout() {
   const decreaseQuantity = useCartStore((state) => state.decreaseQuantity);
   const removeFromCart = useCartStore((state) => state.removeFromCart);
   
+  // ¡MAGIA! Traemos nuestra función de totales inteligentes
+  const getCartTotals = useCartStore((state) => state.getCartTotals);
+  
   const cartItems = carritosPorUsuario[userId] || [];
 
-  const subtotal = cartItems.reduce((total, item) => total + (Number(item.precio_base) * item.cantidad), 0);
-  const costoEnvio = subtotal > 0 ? 15.00 : 0;
-  const totalGeneral = subtotal + costoEnvio;
+  // Reemplazamos el cálculo manual por nuestra función centralizada
+  const { subtotal, discountPercent, totalDiscount, finalTotal, promoMessage } = getCartTotals(userId);
+  
+  // El costo de envío se calcula basado en si hay productos, y se suma al total *después* del descuento
+  const costoEnvio = cartItems.length > 0 ? 15.00 : 0;
+  const totalGeneral = finalTotal + costoEnvio;
 
   const [clientSecret, setClientSecret] = useState("");
 
@@ -120,25 +131,21 @@ export default function Checkout() {
     switch (name) {
       case 'nombre':
       case 'ciudad':
-        // Solo letras y acentos (incluye la ñ)
         if (!/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(value)) {
           errorMsg = 'Solo se permiten letras y espacios.';
         }
         break;
       case 'email':
-        // Estructura de correo estándar
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
           errorMsg = 'Ingresa un correo electrónico válido.';
         }
         break;
       case 'codigoPostal':
-        // Solo números (mínimo 4, máximo 10 dependiendo del país)
         if (!/^\d{4,10}$/.test(value)) {
           errorMsg = 'Debe contener solo números (mínimo 4).';
         }
         break;
       case 'direccion':
-        // Busca si existe alguno de los caracteres prohibidos
         if (/[@;:<>\/\\]/g.test(value)) {
           errorMsg = 'No se permiten caracteres especiales como @ ; : < > / \\';
         }
@@ -153,7 +160,6 @@ export default function Checkout() {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
 
-    // Validar al escribir si no está vacío
     if (value.trim() !== '') {
       const error = validateField(name, value);
       setFormErrors({ ...formErrors, [name]: error });
@@ -162,7 +168,6 @@ export default function Checkout() {
     }
   };
 
-  // Verifica si TODOS los campos tienen texto y NINGÚN campo tiene errores
   const isFormValid = 
     Object.values(formData).every(value => value.trim() !== '') &&
     Object.values(formErrors).every(error => error === '');
@@ -175,7 +180,8 @@ export default function Checkout() {
       fetch('http://localhost:3000/api/pagos/crear-intencion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: cartItems })
+        // IMPORTANTE: Le decimos al backend el total con descuento y envío
+        body: JSON.stringify({ items: cartItems, montoTotal: totalGeneral }) 
       })
       .then(res => res.json())
       .then(data => {
@@ -185,7 +191,7 @@ export default function Checkout() {
       })
       .catch(err => console.error("Error conectando con el backend de pagos", err));
     }
-  }, [cartItems]);
+  }, [cartItems, totalGeneral]); // Se re-ejecuta si el total cambia (por agregar más prendas)
 
   if (cartItems.length === 0) {
     return (
@@ -281,13 +287,17 @@ export default function Checkout() {
               
               {clientSecret ? (
                 <Elements stripe={stripePromise} options={{ clientSecret }}>
-                  {/* Pasamos los props necesarios para la validación y datos */}
+                  {/* 👇 3. Pasamos las nuevas props a CheckoutForm 👇 */}
                   <CheckoutForm 
                     totalGeneral={totalGeneral} 
                     cartItems={cartItems} 
                     userId={userId} 
                     isFormValid={isFormValid}
                     formData={formData}
+                    subtotal={subtotal}
+                    discountPercent={discountPercent}
+                    totalDiscount={totalDiscount}
+                    costoEnvio={costoEnvio}
                   />
                 </Elements>
               ) : (
@@ -298,7 +308,7 @@ export default function Checkout() {
             </section>
           </div>
 
-          {/* COLUMNA DERECHA: RESUMEN */}
+          {/* COLUMNA DERECHA: RESUMEN DEL PEDIDO CON DESCUENTOS VISIBLES */}
           <div className="lg:col-span-5">
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 sticky top-10">
               <h2 className="text-xl font-semibold mb-6 border-b pb-2">Resumen del Pedido</h2>
@@ -329,16 +339,35 @@ export default function Checkout() {
                 ))}
               </div>
 
+              {/* Mensaje de motivación debajo de los productos */}
+              {promoMessage && (
+                <div className="bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm p-3 rounded-md text-center font-bold mb-4">
+                  ✨ {promoMessage}
+                </div>
+              )}
+
               <div className="border-t pt-4 space-y-3">
                 <div className="flex justify-between text-gray-600">
                   <span>Subtotal</span>
-                  <span>${subtotal.toFixed(2)}</span>
+                  <span className={discountPercent > 0 ? "line-through text-gray-400" : ""}>
+                    ${subtotal.toFixed(2)}
+                  </span>
                 </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>Envío</span>
+                
+                {/* Mostrar el descuento en verde si aplica */}
+                {discountPercent > 0 && (
+                  <div className="flex justify-between text-green-600 font-bold">
+                    <span>Descuento aplicado ({discountPercent}%)</span>
+                    <span>-${totalDiscount.toFixed(2)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between text-gray-600 border-b pb-3">
+                  <span>Envío estándar</span>
                   <span>${costoEnvio.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-xl font-black text-gray-900 border-t pt-3">
+
+                <div className="flex justify-between text-xl font-black text-gray-900 pt-1">
                   <span>Total</span>
                   <span>${totalGeneral.toFixed(2)}</span>
                 </div>
