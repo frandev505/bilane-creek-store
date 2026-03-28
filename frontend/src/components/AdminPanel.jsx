@@ -8,6 +8,7 @@ const API_URL = 'http://localhost:3000/api';
 export default function AdminPanel() {
   const currentUser = useAuthStore(state => state.user);
   const [activeTab, setActiveTab] = useState('productos');
+  const [auditoriaSubTab, setAuditoriaSubTab] = useState('logs'); // 🔥 NUEVO: Sub-pestaña para separar Logs y Ventas
 
   // ==========================================
   // ESTADOS GLOBALES
@@ -16,6 +17,7 @@ export default function AdminPanel() {
   const [categorias, setCategorias] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [ventas, setVentas] = useState([]); // 🔥 NUEVO: Estado para guardar los pedidos
   
   // ==========================================
   // ESTADOS DE FILTROS PARA PRODUCTOS
@@ -34,6 +36,7 @@ export default function AdminPanel() {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' }); 
   const [sortUsersConfig, setSortUsersConfig] = useState({ key: null, direction: 'asc' }); 
   const [sortLogsConfig, setSortLogsConfig] = useState({ key: 'fecha', direction: 'desc' });
+  const [sortVentasConfig, setSortVentasConfig] = useState({ key: 'fecha_pedido', direction: 'desc' }); // 🔥 NUEVO
 
   // ==========================================
   // ESTADOS DE PAGINACIÓN
@@ -42,6 +45,7 @@ export default function AdminPanel() {
   const [currentPageProd, setCurrentPageProd] = useState(1);
   const [currentPageUser, setCurrentPageUser] = useState(1);
   const [currentPageLog, setCurrentPageLog] = useState(1);
+  const [currentPageVenta, setCurrentPageVenta] = useState(1); // 🔥 NUEVO
 
   useEffect(() => setCurrentPageProd(1), [filtros]);
 
@@ -49,7 +53,6 @@ export default function AdminPanel() {
   // ESTADOS PARA MODALES Y FORMULARIOS
   // ==========================================
   const [showProductModal, setShowProductModal] = useState(false);
-  // 🔥 NUEVO: Agregamos 'stock' al estado inicial
   const [formData, setFormData] = useState({ id_producto: null, nombre: '', precio_base: '', id_categoria: '', imagen_url: '', tipo_venta: 'prefabricado', stock: '' });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -61,20 +64,42 @@ export default function AdminPanel() {
   const rolesDisponibles = ['admin', 'gerente', 'auditor', 'cliente'];
 
   // ==========================================
-  // CARGA DE DATOS (FETCH)
+  // CARGA DE DATOS (FETCH SEGURO) - CORRECCIÓN 1
   // ==========================================
   const cargarLogs = async () => {
     try {
       const res = await fetch(`${API_URL}/auditoria`);
-      if (res.ok) setLogs(await res.json());
-    } catch (error) { console.error("Error cargando auditoría:", error); }
+      if (res.ok) {
+        setLogs(await res.json());
+      } else {
+        console.warn("La ruta /api/auditoria no está disponible en el backend.");
+      }
+    } catch (error) { console.error("Error de red cargando auditoría:", error); }
   };
 
   useEffect(() => {
     if (currentUser?.rol === 'admin' || currentUser?.rol === 'gerente') {
-      fetch(`${API_URL}/productos?admin=true`).then(res => res.json()).then(setProductos);
-      fetch(`${API_URL}/categorias`).then(res => res.json()).then(setCategorias);
-      fetch(`${API_URL}/usuarios`).then(res => res.json()).then(setUsuarios);
+      fetch(`${API_URL}/productos?admin=true`)
+        .then(res => res.ok ? res.json() : [])
+        .then(setProductos)
+        .catch(err => console.error("Error al cargar productos", err));
+
+      fetch(`${API_URL}/categorias`)
+        .then(res => res.ok ? res.json() : [])
+        .then(setCategorias)
+        .catch(err => console.error("Error al cargar categorías", err));
+
+      fetch(`${API_URL}/usuarios`)
+        .then(res => res.ok ? res.json() : [])
+        .then(setUsuarios)
+        .catch(err => console.error("Error al cargar usuarios", err));
+
+      // 🔥 NUEVO: Cargar los pedidos/ventas
+      fetch(`${API_URL}/pedidos`)
+        .then(res => res.ok ? res.json() : [])
+        .then(setVentas)
+        .catch(err => console.error("Error al cargar ventas", err));
+
       cargarLogs();
     }
   }, [currentUser]);
@@ -94,11 +119,9 @@ export default function AdminPanel() {
   if (sortConfig.key) {
     productosProcesados.sort((a, b) => {
       let aValue = a[sortConfig.key]; let bValue = b[sortConfig.key];
-      // 🔥 NUEVO: Permitimos ordenar numéricamente también por stock
       if (sortConfig.key === 'precio_base' || sortConfig.key === 'stock') { aValue = Number(aValue); bValue = Number(bValue); }
       else if (sortConfig.key === 'activo') { aValue = aValue ? 1 : 0; bValue = bValue ? 1 : 0; }
       else { aValue = String(aValue).toLowerCase(); bValue = String(bValue).toLowerCase(); }
-      
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -120,7 +143,6 @@ export default function AdminPanel() {
   // PROCESAMIENTO: USUARIOS
   // ==========================================
   let usuariosProcesados = [...usuarios];
-
   if (sortUsersConfig.key) {
     usuariosProcesados.sort((a, b) => {
       let aValue = a[sortUsersConfig.key]; let bValue = b[sortUsersConfig.key];
@@ -139,10 +161,9 @@ export default function AdminPanel() {
   };
 
   // ==========================================
-  // PROCESAMIENTO: AUDITORÍA
+  // PROCESAMIENTO: AUDITORÍA (LOGS)
   // ==========================================
   let logsProcesados = [...logs];
-
   if (sortLogsConfig.key) {
     logsProcesados.sort((a, b) => {
       let aValue = a[sortLogsConfig.key]; let bValue = b[sortLogsConfig.key];
@@ -161,6 +182,33 @@ export default function AdminPanel() {
   };
 
   // ==========================================
+  // PROCESAMIENTO: AUDITORÍA (VENTAS) 🔥 NUEVO
+  // ==========================================
+  let ventasProcesadas = [...ventas];
+  if (sortVentasConfig.key) {
+    ventasProcesadas.sort((a, b) => {
+      let aValue = a[sortVentasConfig.key]; let bValue = b[sortVentasConfig.key];
+      if (sortVentasConfig.key === 'fecha_pedido' || sortVentasConfig.key === 'created_at') {
+        aValue = new Date(aValue || a.created_at).getTime(); 
+        bValue = new Date(bValue || b.created_at).getTime();
+      } else if (sortVentasConfig.key === 'total') {
+        aValue = Number(aValue); bValue = Number(bValue);
+      } else {
+        aValue = String(aValue || '').toLowerCase(); bValue = String(bValue || '').toLowerCase();
+      }
+      if (aValue < bValue) return sortVentasConfig.direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortVentasConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
+
+  const handleSortVentas = (key) => {
+    let direction = 'asc';
+    if (sortVentasConfig.key === key && sortVentasConfig.direction === 'asc') direction = 'desc';
+    setSortVentasConfig({ key, direction });
+  };
+
+  // ==========================================
   // PAGINACIÓN (Cálculos de listas a mostrar)
   // ==========================================
   const paginateList = (list, currentPage) => {
@@ -172,6 +220,7 @@ export default function AdminPanel() {
   const productosPaginados = paginateList(productosProcesados, currentPageProd);
   const usuariosPaginados = paginateList(usuariosProcesados, currentPageUser);
   const logsPaginados = paginateList(logsProcesados, currentPageLog);
+  const ventasPaginadas = paginateList(ventasProcesadas, currentPageVenta); // 🔥 NUEVO
 
   const PaginationControls = ({ totalItems, currentPage, setCurrentPage }) => {
     if (itemsPerPage === 'all' || totalItems <= itemsPerPage) return null;
@@ -197,10 +246,7 @@ export default function AdminPanel() {
   const regexNombreProducto = /^[a-zA-ZÀ-ÿ0-9\s]+$/;
   const isNombreProductoValido = formData.nombre.length === 0 || regexNombreProducto.test(formData.nombre);
   const isPrecioProductoValido = formData.precio_base === '' || Number(formData.precio_base) >= 0;
-  
-  // 🔥 NUEVO: Validar que si es prefabricado, el stock no esté vacío y sea válido
   const isStockValido = formData.tipo_venta === 'bajo_pedido' ? true : (formData.stock !== '' && Number(formData.stock) >= 0);
-
   const isProductFormValid = formData.nombre.length > 0 && formData.nombre.length <= 30 && isNombreProductoValido && isPrecioProductoValido && formData.precio_base !== '' && formData.id_categoria !== '' && isStockValido;
 
   // ==========================================
@@ -211,8 +257,8 @@ export default function AdminPanel() {
   
   const isUserNameValid = userFormData.nombre.length === 0 || regexNombreUsuario.test(userFormData.nombre);
   const isUserEmailValid = userFormData.email.length === 0 || regexEmail.test(userFormData.email);
-
   const userPassword = userFormData.password;
+  
   const hasLower = /[a-z]/.test(userPassword);
   const hasUpper = /[A-Z]/.test(userPassword);
   const hasNumber = /\d/.test(userPassword);
@@ -242,7 +288,7 @@ export default function AdminPanel() {
   const isUserFormValid = userFormData.nombre.length >= 3 && isUserNameValid && userFormData.email.length > 0 && isUserEmailValid && finalIsUserPassValid;
 
   // ==========================================
-  // EXPORTAR A PDF (Respeta listas Procesadas)
+  // EXPORTAR A PDF (Mejorado para Ventas)
   // ==========================================
   const exportarPDF = () => {
     try {
@@ -256,8 +302,6 @@ export default function AdminPanel() {
         doc.text("Reporte de Inventario - Admin", 14, 22);
         doc.setFontSize(11);
         doc.text(`Generado el: ${fechaActual} por ${autor}`, 14, 30);
-        
-        // 🔥 NUEVO: Incluimos la columna Stock en el PDF
         const filas = productosProcesados.map(p => [ 
           p.nombre, 
           p.categoria, 
@@ -278,13 +322,30 @@ export default function AdminPanel() {
         doc.save(`Usuarios_${new Date().toISOString().split('T')[0]}.pdf`);
 
       } else if (activeTab === 'auditoria') {
-        if (logsProcesados.length === 0) return alert("No hay registros para exportar.");
-        doc.text("Registro de Actividad (Logs)", 14, 22);
-        doc.setFontSize(11);
-        doc.text(`Generado el: ${fechaActual} por ${autor}`, 14, 30);
-        const filas = logsProcesados.map(log => [new Date(log.fecha).toLocaleString(), `${log.autor || 'Sistema'}\n(${log.autor_email || 'N/A'})`, log.accion, log.detalles]);
-        autoTable(doc, { startY: 36, head: [["Fecha", "Autor", "Acción", "Detalles"]], body: filas, theme: 'striped', headStyles: { fillColor: [26, 45, 33] }, styles: { fontSize: 8 } });
-        doc.save(`Auditoria_${new Date().toISOString().split('T')[0]}.pdf`);
+        // 🔥 NUEVO: Manejo Inteligente de PDF para Auditoría
+        if (auditoriaSubTab === 'logs') {
+          if (logsProcesados.length === 0) return alert("No hay registros para exportar.");
+          doc.text("Registro de Actividad (Logs)", 14, 22);
+          doc.setFontSize(11);
+          doc.text(`Generado el: ${fechaActual} por ${autor}`, 14, 30);
+          const filas = logsProcesados.map(log => [new Date(log.fecha).toLocaleString(), `${log.autor || 'Sistema'}\n(${log.autor_email || 'N/A'})`, log.accion, log.detalles]);
+          autoTable(doc, { startY: 36, head: [["Fecha", "Autor", "Acción", "Detalles"]], body: filas, theme: 'striped', headStyles: { fillColor: [26, 45, 33] }, styles: { fontSize: 8 } });
+          doc.save(`Auditoria_Logs_${new Date().toISOString().split('T')[0]}.pdf`);
+        } else if (auditoriaSubTab === 'ventas') {
+          if (ventasProcesadas.length === 0) return alert("No hay ventas para exportar.");
+          doc.text("Reporte General de Ventas (Admin)", 14, 22);
+          doc.setFontSize(11);
+          doc.text(`Generado el: ${fechaActual} por ${autor}`, 14, 30);
+          const filas = ventasProcesadas.map(v => [
+            String(v.id_pedido).substring(0, 8) + "...", 
+            new Date(v.created_at || v.fecha_pedido).toLocaleString(),
+            v.envio_nombre_completo || 'Cliente Registrado',
+            `$${Number(v.total).toFixed(2)}`,
+            v.estado.toUpperCase()
+          ]);
+          autoTable(doc, { startY: 36, head: [["ID Pedido", "Fecha", "Cliente", "Total", "Estado"]], body: filas, theme: 'striped', headStyles: { fillColor: [26, 45, 33] } });
+          doc.save(`Auditoria_Ventas_${new Date().toISOString().split('T')[0]}.pdf`);
+        }
       }
     } catch (error) { console.error("Error PDF:", error); alert("Problema generando el PDF."); }
   };
@@ -293,6 +354,7 @@ export default function AdminPanel() {
   // MANEJO FORMULARIO PRODUCTOS
   // ==========================================
   const handleFilterChange = (e) => setFiltros({ ...filtros, [e.target.name]: e.target.value });
+  
   const limpiarFiltros = () => { 
     setFiltros({ busqueda: '', categoria: '', precioMin: '', precioMax: '', estado: '' });
     setSortConfig({ key: null, direction: 'asc' }); 
@@ -312,7 +374,6 @@ export default function AdminPanel() {
     try {
       const response = await fetch(url, {
         method, headers: { 'Content-Type': 'application/json' },
-        // 🔥 NUEVO: Enviamos el stock transformado a número o 0
         body: JSON.stringify({ ...formData, nombre: formData.nombre.trim(), precio_base: Number(formData.precio_base), stock: Number(formData.stock || 0), requesterId: currentUser.id })
       });
       if (response.ok) {
@@ -325,15 +386,15 @@ export default function AdminPanel() {
   };
 
   const handleProductEdit = (producto) => {
-    const cat = categorias.find(c => c.nombre === producto.categoria);
+    const cat = categorias.find(c => String(c.nombre).trim().toLowerCase() === String(producto.categoria).trim().toLowerCase());
     setFormData({ 
       id_producto: producto.id_producto, 
       nombre: producto.nombre, 
       precio_base: producto.precio_base, 
-      id_categoria: cat ? cat.id_categoria : '', 
+      id_categoria: cat ? cat.id_categoria : (producto.id_categoria || ''), 
       imagen_url: producto.imagen_url || '',
       tipo_venta: producto.tipo_venta || 'prefabricado',
-      stock: producto.stock || 0 // 🔥 NUEVO: Cargar el stock para editarlo
+      stock: producto.stock || 0 
     });
     setIsEditing(true);
     setShowProductModal(true);
@@ -391,9 +452,27 @@ export default function AdminPanel() {
   const handleResetPassword = async (id) => {
     if(!window.confirm("¿Seguro que deseas resetear la contraseña a 'pass123'?")) return;
     try {
-      const response = await fetch(`${API_URL}/usuarios/${id}/reset-password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterRole: currentUser.rol, requesterId: currentUser.id }) });
-      if (response.ok) { alert("Contraseña reseteada con éxito."); setUsuarios(await fetch(`${API_URL}/usuarios`).then(res => res.json())); cargarLogs(); }
-    } catch (error) { console.error("Error reseteando:", error); }
+      const response = await fetch(`${API_URL}/usuarios/${id}/reset-password`, { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          newPassword: 'pass123', 
+          requesterRole: currentUser.rol, 
+          requesterId: currentUser.id 
+        }) 
+      });
+      
+      if (response.ok) { 
+        alert("Contraseña reseteada con éxito a 'pass123'.");
+        setUsuarios(await fetch(`${API_URL}/usuarios`).then(res => res.json())); 
+        cargarLogs(); 
+      } else {
+        const errorData = await response.json();
+        alert("Error al resetear: " + errorData.error);
+      }
+    } catch (error) { 
+      console.error("Error reseteando:", error);
+    }
   };
 
   // ==========================================
@@ -409,7 +488,6 @@ export default function AdminPanel() {
   }
 
   return (
-    // CONTENEDOR PRINCIPAL GLASSMORPHISM
     <div className="mt-8 rounded-2xl border border-white/20 shadow-2xl p-6 relative overflow-hidden" style={{ background: "radial-gradient(circle at 10% 20%, rgb(40, 60, 45) 0%, rgb(10, 20, 15) 100%)" }}>
       
       {/* TÍTULO Y PESTAÑAS */}
@@ -422,10 +500,9 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* CONTROLES DE PAGINACIÓN GENERAL */}
       <div className="flex justify-end mb-4 items-center gap-3">
         <label className="text-sm font-semibold text-white/70">Mostrar:</label>
-        <select value={itemsPerPage} onChange={(e) => { setItemsPerPage(e.target.value === 'all' ? 'all' : Number(e.target.value)); setCurrentPageProd(1); setCurrentPageUser(1); setCurrentPageLog(1); }} className="bg-[#ccc] text-black/90 font-medium border-0 p-1.5 px-3 rounded outline-none focus:ring-2 focus:ring-green-500/50">
+        <select value={itemsPerPage} onChange={(e) => { setItemsPerPage(e.target.value === 'all' ? 'all' : Number(e.target.value)); setCurrentPageProd(1); setCurrentPageUser(1); setCurrentPageLog(1); setCurrentPageVenta(1); }} className="bg-[#ccc] text-black/90 font-medium border-0 p-1.5 px-3 rounded outline-none focus:ring-2 focus:ring-green-500/50">
           <option value={20}>20 filas</option>
           <option value="all">Todo</option>
         </select>
@@ -451,7 +528,7 @@ export default function AdminPanel() {
                   <div className="flex gap-4">
                     <div className="flex-1">
                       <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Precio Base ($)</label>
-                      <input type="number" name="precio_base" step="0.01" min="0" value={formData.precio_base} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold placeholder-black/40 p-3 w-full rounded outline-none focus:ring-2 ${!isPrecioProductoValido ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
+                      <input type="number" name="precio_base" step="0.01" min="0" onKeyDown={(e) => { if (e.key === '-') e.preventDefault(); }} value={formData.precio_base} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold placeholder-black/40 p-3 w-full rounded outline-none focus:ring-2 ${!isPrecioProductoValido ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
                     </div>
                     <div className="flex-1">
                       <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Categoría</label>
@@ -462,17 +539,10 @@ export default function AdminPanel() {
                     </div>
                   </div>
 
-                  {/* 🔥 NUEVO: Formulario Dinámico para Tipo de Venta y Stock */}
                   <div className="flex gap-4">
                     <div className="flex-1">
                       <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Tipo de Venta</label>
-                      <select 
-                        name="tipo_venta" 
-                        value={formData.tipo_venta} 
-                        onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} 
-                        required 
-                        className="bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50"
-                      >
+                      <select name="tipo_venta" value={formData.tipo_venta} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} required className="bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50" >
                         <option value="prefabricado">Prefabricado (Con Stock)</option>
                         <option value="bajo_pedido">Bajo Pedido (Sin Stock fijo)</option>
                       </select>
@@ -481,16 +551,7 @@ export default function AdminPanel() {
                     {formData.tipo_venta === 'prefabricado' && (
                       <div className="flex-1">
                         <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Cantidad Stock</label>
-                        <input 
-                          type="number" 
-                          name="stock" 
-                          min="0" 
-                          value={formData.stock} 
-                          onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} 
-                          required 
-                          className="bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50" 
-                          placeholder="Ej. 50" 
-                        />
+                        <input type="number" name="stock" min="0" onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }} value={formData.stock} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} required className="bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50" placeholder="Ej. 50" />
                       </div>
                     )}
                   </div>
@@ -499,6 +560,7 @@ export default function AdminPanel() {
                     <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">URL Imagen</label>
                     <input type="text" name="imagen_url" value={formData.imagen_url} onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })} className="bg-[#ccc] text-black/90 font-bold placeholder-black/40 p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50" />
                   </div>
+              
                   <div className="flex gap-3 mt-4">
                     <button type="submit" disabled={!isProductFormValid} className={`flex-1 font-bold uppercase tracking-widest py-3 rounded transition-colors ${!isProductFormValid ? 'bg-white/10 text-white/30 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-500 shadow-lg'}`}>Guardar</button>
                     <button type="button" onClick={handleProductClear} className="flex-1 bg-white/10 text-white/80 font-bold uppercase tracking-widest py-3 hover:bg-white/20 transition-colors rounded">Cancelar</button>
@@ -519,20 +581,25 @@ export default function AdminPanel() {
               <select name="categoria" value={filtros.categoria} onChange={handleFilterChange} className="bg-[#ccc] text-black/80 font-medium p-2.5 rounded-md outline-none focus:ring-2 focus:ring-green-500/50 w-full"><option value="">Todas las Categorías</option>{categorias.map(c => <option key={c.id_categoria} value={c.nombre}>{c.nombre}</option>)}</select>
               <input type="number" name="precioMin" placeholder="Precio Mínimo" min="0" value={filtros.precioMin} onChange={handleFilterChange} className="bg-[#ccc] text-black/80 font-medium p-2.5 rounded-md outline-none focus:ring-2 focus:ring-green-500/50 w-full" />
               <input type="number" name="precioMax" placeholder="Precio Máximo" min="0" value={filtros.precioMax} onChange={handleFilterChange} className="bg-[#ccc] text-black/80 font-medium p-2.5 rounded-md outline-none focus:ring-2 focus:ring-green-500/50 w-full" />
-              <select name="estado" value={filtros.estado} onChange={handleFilterChange} className="bg-[#ccc] text-black/80 font-medium p-2.5 rounded-md outline-none focus:ring-2 focus:ring-green-500/50 w-full"><option value="">Todos los Estados</option><option value="activo">Solo Activos</option><option value="inactivo">Solo Inactivos</option></select>
+              <select name="estado" value={filtros.estado} onChange={handleFilterChange} className="bg-[#ccc] text-black/80 font-medium p-2.5 rounded-md outline-none focus:ring-2 focus:ring-green-500/50 w-full">
+                <option value="">Todos los Estados</option>
+                <option value="activo">Solo Activos</option>
+                <option value="inactivo">Solo Inactivos</option>
+              </select>
             </div>
           </div>
 
-          {/* Cabecera Tabla */}
-          <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
-            <h3 className="text-xl font-bold text-white">Inventario ({productosProcesados.length})</h3>
-            <div className="flex gap-2">
-              <button onClick={() => setShowProductModal(true)} className="bg-[#132018] text-white border border-white/30 hover:bg-white/10 hover:border-white/50 shadow-lg font-bold px-5 py-2 rounded-md transition-all">➕ Nuevo Producto</button>
-              <button onClick={exportarPDF} className="bg-red-900/80 text-red-100 border border-red-500/30 hover:bg-red-800 font-bold px-5 py-2 rounded-md transition-all shadow-lg">📄 Exportar a PDF</button>
-            </div>
+          <div className="flex justify-between items-center mb-6">
+             <div className="bg-[#1a2d21]/80 text-white/90 border border-white/20 px-6 py-4 rounded-xl shadow-lg inline-block">
+               <h3 className="text-lg font-black uppercase tracking-widest text-green-400 mb-1">Inventario</h3>
+               <p className="text-xs font-semibold text-white/60">Gestiona los productos y sus existencias.</p>
+             </div>
+             <div>
+               <button onClick={exportarPDF} className="bg-red-900/80 text-red-100 hover:bg-red-800 font-bold px-5 py-2 rounded-md mr-3 transition-all shadow-lg">📄 PDF</button>
+               <button onClick={() => { handleProductClear(); setShowProductModal(true); }} className="bg-green-600 text-white hover:bg-green-500 font-bold px-5 py-2 rounded-md transition-all shadow-lg">➕ Nuevo</button>
+             </div>
           </div>
 
-          {/* Tabla de Productos */}
           <div className="overflow-x-auto shadow-2xl border border-white/20 rounded-xl bg-white/5 backdrop-blur-sm">
             <table className="w-full text-left border-collapse">
               <thead className="bg-[#0a120e] text-white/90 uppercase text-xs tracking-wider">
@@ -541,7 +608,6 @@ export default function AdminPanel() {
                   <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSort('nombre')}>Nombre {renderSortArrow(sortConfig, 'nombre')}</th>
                   <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSort('categoria')}>Categoría {renderSortArrow(sortConfig, 'categoria')}</th>
                   <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSort('precio_base')}>Precio {renderSortArrow(sortConfig, 'precio_base')}</th>
-                  {/* 🔥 NUEVO: Columna de Stock en la cabecera */}
                   <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSort('stock')}>Stock {renderSortArrow(sortConfig, 'stock')}</th>
                   <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSort('activo')}>Estado {renderSortArrow(sortConfig, 'activo')}</th>
                   <th className="p-4 border-b border-white/10 text-center">Acciones</th>
@@ -551,38 +617,14 @@ export default function AdminPanel() {
                 {productosPaginados.length > 0 ? productosPaginados.map(p => (
                   <tr key={p.id_producto} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${!p.activo ? 'opacity-50' : ''}`}>
                     <td className="p-4"><img src={p.imagen_url || `https://ui-avatars.com/api/?name=${p.nombre}&background=random`} alt={p.nombre} className="w-10 h-10 object-cover rounded-md border border-white/20" /></td>
-                    <td className="p-4">
-                      <div className="font-semibold text-white">{p.nombre}</div>
-                      <span className={`text-xs px-2 py-0.5 mt-1 rounded inline-block font-bold uppercase tracking-wider ${
-                        p.tipo_venta === 'bajo_pedido' 
-                          ? 'bg-purple-900/60 text-purple-300 border border-purple-500/30' 
-                          : 'bg-blue-900/60 text-blue-300 border border-blue-500/30'
-                      }`}>
-                        {p.tipo_venta === 'bajo_pedido' ? 'Bajo Pedido' : 'Prefabricado'}
-                      </span>
-                    </td>
+                    <td className="p-4"><div className="font-semibold text-white">{p.nombre}</div><span className="text-xs text-white/50">{p.tipo_venta === 'bajo_pedido' ? 'Bajo Pedido' : 'Prefabricado'}</span></td>
                     <td className="p-4 text-white/70 text-sm">{p.categoria}</td>
                     <td className="p-4 font-bold text-green-400">${Number(p.precio_base).toFixed(2)}</td>
-                    
-                    {/* 🔥 NUEVO: Celda Visual del Stock */}
-                    <td className="p-4 font-bold text-lg">
-                      {p.tipo_venta === 'bajo_pedido' ? (
-                        <span className="text-purple-400" title="Bajo pedido, stock infinito">∞</span>
-                      ) : (
-                        <span className={p.stock < 10 ? 'text-red-400' : 'text-white'}>{p.stock}</span>
-                      )}
-                    </td>
-
-                    <td className="p-4">
-                      <span className={p.activo ? "bg-green-500/20 text-green-300 border border-green-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide" : "bg-red-500/20 text-red-300 border border-red-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide"}>
-                        {p.activo ? 'ACTIVO' : 'INACTIVO'}
-                      </span>
-                    </td>
+                    <td className="p-4 font-bold text-lg">{p.tipo_venta === 'bajo_pedido' ? <span className="text-purple-400">∞</span> : <span className={p.stock < 10 ? 'text-red-400' : 'text-white'}>{p.stock}</span>}</td>
+                    <td className="p-4"><span className={p.activo ? "bg-green-500/20 text-green-300 border border-green-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide" : "bg-red-500/20 text-red-300 border border-red-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide"}>{p.activo ? 'ACTIVO' : 'INACTIVO'}</span></td>
                     <td className="p-4 text-center">
-                      <button onClick={() => handleProductEdit(p)} className="bg-blue-900/80 text-blue-100 px-3 py-1.5 rounded mr-2 hover:bg-blue-800 transition-colors border border-blue-500/50">Editar</button>
-                      <button onClick={() => handleProductToggleStatus(p)} className={`px-3 py-1.5 rounded transition-colors border ${p.activo ? 'bg-red-900/80 text-red-100 border-red-500/50 hover:bg-red-800' : 'bg-green-900/80 text-green-100 border-green-500/50 hover:bg-green-800'}`}>
-                        {p.activo ? 'Inhabilitar' : 'Habilitar'}
-                      </button>
+                      <button onClick={() => handleProductEdit(p)} className="bg-blue-900/80 text-blue-100 px-3 py-1.5 rounded mr-2 hover:bg-blue-800 transition-colors border border-blue-500/30 font-bold text-xs uppercase tracking-wider shadow-md">Editar</button>
+                      <button onClick={() => handleProductToggleStatus(p)} className="bg-gray-800 text-white/80 px-3 py-1.5 rounded hover:bg-gray-700 transition-colors border border-white/10 font-bold text-xs uppercase tracking-wider shadow-md">{p.activo ? 'Desactivar' : 'Activar'}</button>
                     </td>
                   </tr>
                 )) : <tr><td colSpan="7" className="p-8 text-center text-white/60 font-medium">No se encontraron productos.</td></tr>}
@@ -601,57 +643,56 @@ export default function AdminPanel() {
           {showUserModal && (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-center items-center z-50 p-4">
               <div className="bg-[#132018] border border-white/20 p-8 rounded-2xl shadow-2xl max-w-lg w-full relative">
-                <h3 className="text-2xl font-black uppercase text-white mb-6 border-b border-white/10 pb-4">{isEditing ? '✏️ Editar Usuario' : '➕ Nuevo Usuario'}</h3>
+                <h3 className="text-2xl font-black uppercase text-white mb-6 border-b border-white/10 pb-4">{isUserEditing ? '✏️ Editar Usuario' : '➕ Nuevo Usuario'}</h3>
                 <form onSubmit={handleUserSubmit} className="flex flex-col gap-5">
                   <div>
                     <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Nombre Completo</label>
-                    <input type="text" name="nombre" value={userFormData.nombre} onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold placeholder-black/40 p-3 w-full rounded outline-none focus:ring-2 ${!isUserNameValid ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
-                    {!isUserNameValid && <span className="text-xs text-red-400 font-semibold mt-1 block">Solo letras y espacios permitidos.</span>}
+                    <input type="text" name="nombre" value={userFormData.nombre} onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} minLength={3} required className={`bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 ${!isUserNameValid ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
+                    {!isUserNameValid && <span className="text-xs text-red-400 font-semibold mt-1 block">Solo letras y espacios.</span>}
                   </div>
+                  
                   <div>
                     <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Correo Electrónico</label>
-                    <input type="email" name="email" value={userFormData.email} onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold placeholder-black/40 p-3 w-full rounded outline-none focus:ring-2 ${!isUserEmailValid ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
-                    {!isUserEmailValid && <span className="text-xs text-red-400 font-semibold mt-1 block">Correo no válido.</span>}
+                    <input type="email" name="email" value={userFormData.email} onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 ${!isUserEmailValid ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
+                    {!isUserEmailValid && <span className="text-xs text-red-400 font-semibold mt-1 block">Formato inválido.</span>}
                   </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Contraseña {!isUserEditing && '(Estricta)'}</label>
-                    {!isUserEditing ? (
-                      <>
-                        <div className="relative">
-                          <input type={showUserPassword ? "text" : "password"} name="password" maxLength={32} value={userFormData.password} onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold p-3 pr-20 w-full rounded outline-none focus:ring-2 ${!finalIsUserPassValid && userFormData.password.length > 0 ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
-                          <button type="button" onClick={() => setShowUserPassword(!showUserPassword)} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs uppercase font-bold text-black/60 hover:text-black transition-colors" >
-                            {showUserPassword ? "Ocultar" : "Mostrar"}
-                          </button>
-                        </div>
-                        {userFormData.password.length > 0 && (
-                          <div className="mt-3 p-4 bg-white/5 border border-white/10 text-white/80 text-sm rounded-lg">
-                            <div className="h-2 w-full bg-black/40 rounded-full overflow-hidden mb-2">
-                              <div className={`h-full transition-all duration-300 ease-in-out ${pwColor}`} style={{ width: pwWidth }}></div>
-                            </div>
-                            <p className={`text-xs font-bold text-right mb-3 ${pwColor.replace('bg-', 'text-')}`}>
-                              {pwText}
-                            </p>
-                            <ul className="grid grid-cols-2 gap-2 text-xs">
-                              <li className={isValidLength ? 'text-green-400 font-semibold' : 'text-white/40'}>{isValidLength ? '✓' : '○'} 6 - 32 caract.</li>
-                              <li className={hasUpper ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasUpper ? '✓' : '○'} Mayúscula</li>
-                              <li className={hasLower ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasLower ? '✓' : '○'} Minúscula</li>
-                              <li className={hasNumber ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasNumber ? '✓' : '○'} Número</li>
-                              <li className={hasSpecial ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasSpecial ? '✓' : '○'} Caract. Especial</li>
-                              <li className={hasNoSpace ? 'text-green-400 font-semibold' : 'text-white/40'}>{hasNoSpace ? '✓' : '○'} Sin espacios</li>
-                            </ul>
+
+                  {!isUserEditing && (
+                    <div>
+                      <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Contraseña</label>
+                      <div className="relative">
+                        <input type={showUserPassword ? "text" : "password"} name="password" value={userFormData.password} onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} required={!isUserEditing} className={`bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none pr-12 focus:ring-2 ${userFormData.password.length > 0 && !isUserPassValidLocal ? 'ring-red-500' : 'focus:ring-green-500/50'}`} />
+                        <button type="button" onClick={() => setShowUserPassword(!showUserPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-black/50 hover:text-black font-bold text-xs uppercase">
+                          {showUserPassword ? 'Ocultar' : 'Ver'}
+                        </button>
+                      </div>
+                      
+                      {userFormData.password.length > 0 && (
+                        <div className="mt-3 p-3 bg-white/5 border border-white/10 rounded">
+                          <div className="h-1.5 w-full bg-black/40 rounded-full overflow-hidden mb-2">
+                            <div className={`h-full transition-all duration-300 ${pwColor}`} style={{ width: pwWidth }}></div>
                           </div>
-                        )}
-                      </>
-                    ) : (
-                      <input type="password" disabled value="********" className="bg-white/5 text-white/40 font-bold p-3 w-full rounded outline-none border border-transparent cursor-not-allowed" />
-                    )}
-                  </div>
+                          <p className={`text-[10px] font-bold text-right mb-2 uppercase ${pwColor.replace('bg-', 'text-')}`}>{pwText}</p>
+                          <ul className="grid grid-cols-2 gap-1 text-[10px] uppercase font-bold tracking-tight">
+                            <li className={isValidLength ? 'text-green-400' : 'text-white/40'}>{isValidLength ? '✓' : '○'} 6-32 chars</li>
+                            <li className={hasUpper ? 'text-green-400' : 'text-white/40'}>{hasUpper ? '✓' : '○'} Mayúscula</li>
+                            <li className={hasLower ? 'text-green-400' : 'text-white/40'}>{hasLower ? '✓' : '○'} Minúscula</li>
+                            <li className={hasNumber ? 'text-green-400' : 'text-white/40'}>{hasNumber ? '✓' : '○'} Número</li>
+                            <li className={hasSpecial ? 'text-green-400' : 'text-white/40'}>{hasSpecial ? '✓' : '○'} Especial</li>
+                            <li className={hasNoSpace ? 'text-green-400' : 'text-white/40'}>{hasNoSpace ? '✓' : '○'} Sin Espacios</li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div>
-                    <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Rol en el Sistema</label>
-                    <select name="rol" value={userFormData.rol} onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} required className={`bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50 ${userFormData.id_usuario === currentUser.id ? 'opacity-70 cursor-not-allowed' : ''}`} disabled={userFormData.id_usuario === currentUser.id}>
-                      {rolesDisponibles.map(rol => <option key={rol} value={rol}>{rol.charAt(0).toUpperCase() + rol.slice(1)}</option>)}
+                    <label className="text-xs uppercase tracking-wider font-bold text-white/60 mb-1 block">Rol del Sistema</label>
+                    <select name="rol" value={userFormData.rol} onChange={(e) => setUserFormData({ ...userFormData, [e.target.name]: e.target.value })} required className="bg-[#ccc] text-black/90 font-bold p-3 w-full rounded outline-none focus:ring-2 focus:ring-green-500/50">
+                      {rolesDisponibles.map(r => <option key={r} value={r} className="capitalize">{r}</option>)}
                     </select>
                   </div>
+              
                   <div className="flex gap-3 mt-4">
                     <button type="submit" disabled={!isUserFormValid} className={`flex-1 font-bold uppercase tracking-widest py-3 rounded transition-colors ${!isUserFormValid ? 'bg-white/10 text-white/30 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-500 shadow-lg'}`}>Guardar</button>
                     <button type="button" onClick={handleUserClear} className="flex-1 bg-white/10 text-white/80 font-bold uppercase tracking-widest py-3 hover:bg-white/20 transition-colors rounded">Cancelar</button>
@@ -661,12 +702,15 @@ export default function AdminPanel() {
             </div>
           )}
 
-          <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
-            <h3 className="text-xl font-bold text-white">Directorio de Usuarios ({usuariosProcesados.length})</h3>
-            <div className="flex gap-2">
-              <button onClick={() => { setIsUserEditing(false); setShowUserModal(true); }} className="bg-[#132018] text-white border border-white/30 hover:bg-white/10 hover:border-white/50 shadow-lg font-bold px-5 py-2 rounded-md transition-all">➕ Nuevo Usuario</button>
-              <button onClick={exportarPDF} className="bg-red-900/80 text-red-100 border border-red-500/30 hover:bg-red-800 font-bold px-5 py-2 rounded-md transition-all shadow-lg">📄 Exportar a PDF</button>
-            </div>
+          <div className="flex justify-between items-center mb-6">
+             <div className="bg-[#1a2d21]/80 text-white/90 border border-white/20 px-6 py-4 rounded-xl shadow-lg inline-block">
+               <h3 className="text-lg font-black uppercase tracking-widest text-green-400 mb-1">Directorio de Usuarios</h3>
+               <p className="text-xs font-semibold text-white/60">Gestiona accesos y roles del sistema.</p>
+             </div>
+             <div>
+               <button onClick={() => { handleUserClear(); setShowUserModal(true); }} className="bg-green-600 text-white hover:bg-green-500 font-bold px-5 py-2 rounded-md transition-all shadow-lg mr-2">➕ Nuevo</button>
+               <button onClick={exportarPDF} className="bg-red-900/80 text-red-100 hover:bg-red-800 font-bold px-5 py-2 rounded-md transition-all shadow-lg">📄 Exportar a PDF</button>
+             </div>
           </div>
 
           <div className="overflow-x-auto shadow-2xl border border-white/20 rounded-xl bg-white/5 backdrop-blur-sm">
@@ -685,18 +729,12 @@ export default function AdminPanel() {
                   <tr key={u.id_usuario} className={`border-b border-white/5 hover:bg-white/5 transition-colors ${!u.activo ? 'opacity-50' : ''}`}>
                     <td className="p-4 font-semibold text-white">{u.nombre}</td>
                     <td className="p-4 text-white/70 text-sm">{u.email}</td>
-                    <td className="p-4"><span className="bg-white/10 text-white/80 border border-white/20 px-2.5 py-1 rounded text-xs font-bold uppercase tracking-widest">{u.rol}</span></td>
-                    <td className="p-4">
-                      <span className={u.activo ? "bg-green-500/20 text-green-300 border border-green-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide" : "bg-red-500/20 text-red-300 border border-red-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide"}>
-                        {u.activo ? 'ACTIVO' : 'INHABILITADO'}
-                      </span>
-                    </td>
+                    <td className="p-4"><span className="bg-white/10 text-white/80 border border-white/20 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">{u.rol}</span></td>
+                    <td className="p-4"><span className={u.activo ? "bg-green-500/20 text-green-300 border border-green-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide" : "bg-red-500/20 text-red-300 border border-red-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide"}>{u.activo ? 'ACTIVO' : 'INACTIVO'}</span></td>
                     <td className="p-4 text-center">
-                      <button onClick={() => handleUserEdit(u)} className="bg-blue-900/80 text-blue-100 px-3 py-1.5 rounded mr-2 hover:bg-blue-800 transition-colors border border-blue-500/50">Editar</button>
-                      <button onClick={() => handleResetPassword(u.id_usuario)} className="bg-orange-900/80 text-orange-100 px-3 py-1.5 rounded mr-2 hover:bg-orange-800 transition-colors border border-orange-500/50" title="Reiniciar a 'pass123'">🔑 Reset Pass</button>
-                      <button onClick={() => handleUserToggleStatus(u)} disabled={u.id_usuario === currentUser.id} className={`px-3 py-1.5 rounded transition-colors border ${u.id_usuario === currentUser.id ? 'bg-white/5 text-white/30 border-transparent cursor-not-allowed' : (u.activo ? 'bg-red-900/80 text-red-100 border-red-500/50 hover:bg-red-800' : 'bg-green-900/80 text-green-100 border-green-500/50 hover:bg-green-800')}`}>
-                        {u.activo ? 'Inhabilitar' : 'Habilitar'}
-                      </button>
+                      <button onClick={() => handleUserEdit(u)} className="bg-blue-900/80 text-blue-100 px-3 py-1.5 rounded mr-2 hover:bg-blue-800 transition-colors border border-blue-500/30 font-bold text-xs uppercase tracking-wider shadow-md">Editar</button>
+                      <button onClick={() => handleUserToggleStatus(u)} className="bg-gray-800 text-white/80 px-3 py-1.5 rounded mr-2 hover:bg-gray-700 transition-colors border border-white/10 font-bold text-xs uppercase tracking-wider shadow-md">{u.activo ? 'Desactivar' : 'Activar'}</button>
+                      <button onClick={() => handleResetPassword(u.id_usuario)} className="bg-orange-900/80 text-orange-100 px-3 py-1.5 rounded hover:bg-orange-800 transition-colors border border-orange-500/30 font-bold text-xs uppercase tracking-wider shadow-md">Reset Pass</button>
                     </td>
                   </tr>
                 )) : <tr><td colSpan="5" className="p-8 text-center text-white/60 font-medium">No se encontraron usuarios.</td></tr>}
@@ -708,43 +746,96 @@ export default function AdminPanel() {
       )}
 
       {/* ========================================== */}
-      {/* VISTA: AUDITORÍA */}
+      {/* VISTA: AUDITORÍA 🔥 NUEVO RENDERING DE PESTAÑAS */}
       {/* ========================================== */}
       {activeTab === 'auditoria' && (
         <div className="animate-fade-in">
-          <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
-            <h3 className="text-xl font-bold text-white">Registro de Actividad ({logsProcesados.length})</h3>
-            <div className="flex gap-2">
-              <button onClick={cargarLogs} className="bg-[#132018] text-white border border-white/30 hover:bg-white/10 hover:border-white/50 shadow-lg font-bold px-5 py-2 rounded-md transition-all">🔄 Refrescar</button>
-              <button onClick={exportarPDF} className="bg-red-900/80 text-red-100 border border-red-500/30 hover:bg-red-800 font-bold px-5 py-2 rounded-md transition-all shadow-lg">📄 Exportar a PDF</button>
-            </div>
+          
+          <div className="flex flex-col lg:flex-row justify-between items-center mb-6 gap-4">
+             <div className="flex gap-2 bg-[#0a120e]/40 p-1.5 rounded-lg border border-white/5 shadow-md">
+                <button 
+                  onClick={() => setAuditoriaSubTab('logs')} 
+                  className={`px-6 py-2.5 font-bold rounded-md transition-all uppercase tracking-widest text-xs ${auditoriaSubTab === 'logs' ? 'bg-[#1a2d21] text-green-400 shadow-md border border-white/20' : 'bg-transparent text-white/50 hover:bg-white/5 hover:text-white'}`}
+                >
+                  📋 Logs del Sistema
+                </button>
+                <button 
+                  onClick={() => setAuditoriaSubTab('ventas')} 
+                  className={`px-6 py-2.5 font-bold rounded-md transition-all uppercase tracking-widest text-xs ${auditoriaSubTab === 'ventas' ? 'bg-[#1a2d21] text-green-400 shadow-md border border-white/20' : 'bg-transparent text-white/50 hover:bg-white/5 hover:text-white'}`}
+                >
+                  💰 Transacciones de Ventas
+                </button>
+             </div>
+             <div>
+               <button onClick={exportarPDF} className="bg-red-900/80 text-red-100 hover:bg-red-800 font-bold px-5 py-2 rounded-md transition-all shadow-lg text-sm uppercase tracking-widest">📄 Exportar a PDF</button>
+             </div>
           </div>
 
-          <div className="overflow-x-auto shadow-2xl border border-white/20 rounded-xl bg-white/5 backdrop-blur-sm">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-[#0a120e] text-white/90 uppercase text-xs tracking-wider">
-                <tr>
-                  <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('fecha')}>Fecha y Hora {renderSortArrow(sortLogsConfig, 'fecha')}</th>
-                  <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('autor')}>Autor {renderSortArrow(sortLogsConfig, 'autor')}</th>
-                  <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('accion')}>Acción {renderSortArrow(sortLogsConfig, 'accion')}</th>
-                  <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('detalles')}>Detalles {renderSortArrow(sortLogsConfig, 'detalles')}</th>
-                </tr>
-              </thead>
-              <tbody className="text-sm">
-                {logsPaginados.length > 0 ? logsPaginados.map(log => (
-                  <tr key={log.id_log} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                    <td className="p-4 whitespace-nowrap text-white/60 font-medium">{new Date(log.fecha).toLocaleString()}</td>
-                    <td className="p-4"><div className="font-bold text-white">{log.autor || 'Sistema'}</div><div className="text-xs text-white/50">{log.autor_email || 'N/A'}</div></td>
-                    <td className="p-4"><span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide uppercase">{log.accion}</span></td>
-                    <td className="p-4 text-white/80">{log.detalles}</td>
+          {/* === SUB-TAB: LOGS === */}
+          {auditoriaSubTab === 'logs' && (
+            <div className="overflow-x-auto shadow-2xl border border-white/20 rounded-xl bg-white/5 backdrop-blur-sm">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-[#0a120e] text-white/90 uppercase text-xs tracking-wider">
+                  <tr>
+                    <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('fecha')}>Fecha y Hora {renderSortArrow(sortLogsConfig, 'fecha')}</th>
+                    <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('autor')}>Autor {renderSortArrow(sortLogsConfig, 'autor')}</th>
+                    <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('accion')}>Acción {renderSortArrow(sortLogsConfig, 'accion')}</th>
+                    <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortLogs('detalles')}>Detalles {renderSortArrow(sortLogsConfig, 'detalles')}</th>
                   </tr>
-                )) : <tr><td colSpan="4" className="p-8 text-center text-white/60 font-medium">No hay registros de auditoría por el momento.</td></tr>}
-              </tbody>
-            </table>
-            <PaginationControls totalItems={logsProcesados.length} currentPage={currentPageLog} setCurrentPage={setCurrentPageLog} />
-          </div>
+                </thead>
+                <tbody className="text-sm">
+                  {logsPaginados.length > 0 ? logsPaginados.map(log => (
+                    <tr key={log.id_log} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                      <td className="p-4 whitespace-nowrap text-white/60 font-medium">{new Date(log.fecha).toLocaleString()}</td>
+                      <td className="p-4"><div className="font-bold text-white">{log.autor || 'Sistema'}</div><div className="text-xs text-white/50">{log.autor_email || 'N/A'}</div></td>
+                      <td className="p-4"><span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2.5 py-1 rounded text-xs font-bold tracking-wide uppercase">{log.accion}</span></td>
+                      <td className="p-4 text-white/80">{log.detalles}</td>
+                    </tr>
+                  )) : <tr><td colSpan="4" className="p-8 text-center text-white/60 font-medium">No hay registros de auditoría por el momento.</td></tr>}
+                </tbody>
+              </table>
+              <PaginationControls totalItems={logsProcesados.length} currentPage={currentPageLog} setCurrentPage={setCurrentPageLog} />
+            </div>
+          )}
+
+          {/* === SUB-TAB: VENTAS === */}
+          {auditoriaSubTab === 'ventas' && (
+            <div className="overflow-x-auto shadow-2xl border border-white/20 rounded-xl bg-white/5 backdrop-blur-sm">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-[#0a120e] text-white/90 uppercase text-xs tracking-wider">
+                  <tr>
+                    <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortVentas('fecha_pedido')}>Fecha de Compra {renderSortArrow(sortVentasConfig, 'fecha_pedido')}</th>
+                    <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortVentas('id_pedido')}>ID Pedido {renderSortArrow(sortVentasConfig, 'id_pedido')}</th>
+                    <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortVentas('envio_nombre_completo')}>Cliente {renderSortArrow(sortVentasConfig, 'envio_nombre_completo')}</th>
+                    <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortVentas('total')}>Total Pagado {renderSortArrow(sortVentasConfig, 'total')}</th>
+                    <th className="p-4 border-b border-white/10 cursor-pointer hover:text-white transition-colors select-none" onClick={() => handleSortVentas('estado')}>Estado {renderSortArrow(sortVentasConfig, 'estado')}</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm">
+                  {ventasPaginadas.length > 0 ? ventasPaginadas.map(v => (
+                    <tr key={v.id_pedido} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                      <td className="p-4 whitespace-nowrap text-white/70 font-medium">{new Date(v.created_at || v.fecha_pedido).toLocaleString()}</td>
+                      <td className="p-4 text-white/50 font-mono text-xs" title={v.id_pedido}>{String(v.id_pedido).substring(0, 8)}...</td>
+                      <td className="p-4 font-bold text-white">{v.envio_nombre_completo || 'Cliente Registrado'}</td>
+                      <td className="p-4 font-bold text-green-400 text-lg">${Number(v.total).toFixed(2)}</td>
+                      <td className="p-4">
+                        <span className={`px-2.5 py-1 rounded text-xs font-bold tracking-wide uppercase border ${
+                          v.estado === 'completado' || v.estado === 'pagado' ? 'bg-green-500/20 text-green-300 border-green-500/30' :
+                          v.estado === 'cancelado' ? 'bg-red-500/20 text-red-300 border-red-500/30' : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+                        }`}>
+                          {v.estado}
+                        </span>
+                      </td>
+                    </tr>
+                  )) : <tr><td colSpan="5" className="p-8 text-center text-white/60 font-medium">No hay ventas registradas.</td></tr>}
+                </tbody>
+              </table>
+              <PaginationControls totalItems={ventasProcesadas.length} currentPage={currentPageVenta} setCurrentPage={setCurrentPageVenta} />
+            </div>
+          )}
         </div>
       )}
+
     </div>
   );
 }

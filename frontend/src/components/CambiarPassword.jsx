@@ -3,6 +3,9 @@ import { useAuthStore } from '../store/authStore';
 
 export default function CambiarPassword() {
   const currentUser = useAuthStore(state => state.user);
+  
+  // 🔥 Agregamos el estado para la contraseña actual
+  const [passwordActual, setPasswordActual] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' });
@@ -31,11 +34,17 @@ export default function CambiarPassword() {
       const response = await fetch(`http://localhost:3000/api/usuarios/${currentUser.id}/cambiar-password`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nuevaPassword: password })
+        // 🔥 Enviamos la contraseña actual y la nueva con los nombres que espera el backend
+        body: JSON.stringify({ 
+          passwordActual: passwordActual,
+          nuevoPassword: password 
+        })
       });
 
       if (response.ok) {
         setMensaje({ texto: '¡Contraseña actualizada con éxito!', tipo: 'exito' });
+        // Limpiamos todos los campos tras el éxito
+        setPasswordActual('');
         setPassword('');
         setConfirmPassword('');
       } else {
@@ -62,6 +71,20 @@ export default function CambiarPassword() {
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        
+        {/* 🔥 NUEVO CAMPO: Contraseña Actual */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña Actual</label>
+          <input 
+            type="password" 
+            value={passwordActual} 
+            onChange={(e) => setPasswordActual(e.target.value)} 
+            required 
+            placeholder="Tu contraseña actual"
+            className="w-full border p-2 rounded focus:ring-black focus:border-black"
+          />
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Contraseña</label>
           <input 
