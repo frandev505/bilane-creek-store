@@ -1,10 +1,10 @@
 import { useState } from 'react';
-// 🔥 1. IMPORTAMOS SUN Y MOON DE LUCIDE
-import { ShoppingCart, Menu, User, Sun, Moon } from 'lucide-react';
+// 🔥 1. IMPORTAMOS 'X' PARA PODER CERRAR EL MENÚ MÓVIL
+import { ShoppingCart, Menu, User, Sun, Moon, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useCartStore } from '../store/cartStore';
 import { useAuthStore } from '../store/authStore';
-import { useThemeStore } from '../store/themeStore'; // 🔥 2. IMPORTAMOS EL STORE DEL TEMA
+import { useThemeStore } from '../store/themeStore';
 import CambiarPassword from './CambiarPassword';
 
 export default function Navbar() {
@@ -21,19 +21,28 @@ export default function Navbar() {
   const cartItems = carritosPorUsuario[userId] || [];
   const totalItems = cartItems.reduce((total, item) => total + item.cantidad, 0);
 
-  // 🔥 3. TRAEMOS EL ESTADO Y LA FUNCIÓN DEL TEMA
   const isDarkMode = useThemeStore((state) => state.isDarkMode);
   const toggleDarkMode = useThemeStore((state) => state.toggleDarkMode);
 
-  const [menuAbierto, setMenuAbierto] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(false); // Menú del usuario
   const [modalPasswordAbierto, setModalPasswordAbierto] = useState(false);
+  
+  // 🔥 2. NUEVO ESTADO PARA EL MENÚ DE NAVEGACIÓN EN MÓVILES
+  const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
 
   return (
     <>
-      {/* 🔥 4. CLASES DARK AL FONDO DEL NAVBAR */}
-      <nav className="flex justify-between items-center p-4 bg-white dark:bg-gray-900 shadow-sm sticky top-0 z-40 transition-colors duration-300">
-        <button className="md:hidden dark:text-white"><Menu /></button>
+      <nav className="flex justify-between items-center p-4 bg-white dark:bg-gray-900 shadow-sm sticky top-0 z-40 transition-colors duration-300 relative">
         
+        {/* 🔥 3. BOTÓN HAMBURGUESA CON FUNCIONALIDAD */}
+        <button 
+          className="md:hidden dark:text-white transition-colors"
+          onClick={() => setMenuMovilAbierto(!menuMovilAbierto)}
+        >
+          {menuMovilAbierto ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </button>
+        
+        {/* LINKS ESCRITORIO */}
         <div className="hidden md:flex gap-6 font-semibold text-sm">
           <Link to="/" className="hover:text-gray-600 dark:text-gray-200 dark:hover:text-gray-400 transition-colors">Home</Link>
           <Link to="/shop" className="hover:text-gray-600 dark:text-gray-200 dark:hover:text-gray-400 transition-colors">Shop</Link>
@@ -43,7 +52,6 @@ export default function Navbar() {
         
         <div className="flex items-center gap-6">
           
-          {/* 🔥 5. BOTÓN DEL MODO OSCURO (NUEVO) */}
           <button 
             onClick={toggleDarkMode} 
             className="hover:text-gray-600 dark:text-gray-200 dark:hover:text-gray-400 transition-colors focus:outline-none"
@@ -67,7 +75,7 @@ export default function Navbar() {
               </Link>
             )}
 
-            {/* MENÚ DESPLEGABLE */}
+            {/* MENÚ DESPLEGABLE DEL USUARIO */}
             {user && menuAbierto && (
               <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-gray-800 rounded-md shadow-xl text-black dark:text-white border dark:border-gray-700 overflow-hidden z-50 transition-colors">
                 <div className="p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
@@ -142,6 +150,26 @@ export default function Navbar() {
             </button>
           )}
         </div>
+
+        {/* 🔥 4. MENÚ DESPLEGABLE MÓVIL (NUEVO) */}
+        {menuMovilAbierto && (
+          <div className="absolute top-full left-0 w-full bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 shadow-xl md:hidden flex flex-col px-6 py-6 gap-6 z-50 transition-colors duration-300">
+            <Link 
+              to="/" 
+              onClick={() => setMenuMovilAbierto(false)} 
+              className="text-xl font-bold uppercase tracking-widest text-black dark:text-white"
+            >
+              Home
+            </Link>
+            <Link 
+              to="/shop" 
+              onClick={() => setMenuMovilAbierto(false)} 
+              className="text-xl font-bold uppercase tracking-widest text-black dark:text-white"
+            >
+              Shop
+            </Link>
+          </div>
+        )}
       </nav>
 
       {/* ================= MODAL DE CONTRASEÑA FLOTANTE ================= */}
