@@ -9,6 +9,7 @@ import AuditorPanel from './components/AuditorPanel';
 import Checkout from './pages/Checkout'; 
 import HistorialCompras from './pages/HistorialCompras';
 import ProductDetail from './pages/ProductDetail'; 
+import Shop from './pages/Shop';
 import { useProducts } from './hooks/useProducts'; 
 import { useCartStore } from './store/cartStore'; 
 import { useAuthStore } from './store/authStore';
@@ -55,7 +56,7 @@ function Home() {
 
       {/* MARQUEE más delgado y elegante */}
       <div className="border-y border-white/10">
-        <Marquee text="ESSENTIALS • NEW DROPS • LIMITED EDITION • PREMIUM QUALITY •" bgColor="bg-black" textColor="text-white" />
+        <Marquee text="COLLECTIONS" bgColor="bg-black" textColor="text-white" />
       </div>
 
       {/* ========================================================= */}
@@ -187,6 +188,7 @@ function App() {
           <Route path="/checkout" element={<Checkout />} /> 
           <Route path="/mis-compras" element={<HistorialCompras />} />
           <Route path="/producto/:id" element={<ProductDetail />} />
+          <Route path="/shop" element={<Shop />} />
         </Routes>
 
         {/* ================================================== */}

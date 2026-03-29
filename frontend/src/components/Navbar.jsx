@@ -36,7 +36,7 @@ export default function Navbar() {
         
         <div className="hidden md:flex gap-6 font-semibold text-sm">
           <Link to="/" className="hover:text-gray-600 dark:text-gray-200 dark:hover:text-gray-400 transition-colors">Home</Link>
-          <a href="#" className="hover:text-gray-600 dark:text-gray-200 dark:hover:text-gray-400 transition-colors">Shop</a>
+          <Link to="/shop" className="hover:text-gray-600 dark:text-gray-200 dark:hover:text-gray-400 transition-colors">Shop</Link>
         </div>
         
         <Link to="/" className="text-2xl font-black tracking-tighter dark:text-white transition-colors">BILANE CREEK</Link>
