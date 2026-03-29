@@ -9,7 +9,6 @@ import AuditorPanel from './components/AuditorPanel';
 import Checkout from './pages/Checkout'; 
 import HistorialCompras from './pages/HistorialCompras';
 import ProductDetail from './pages/ProductDetail'; 
-
 import { useProducts } from './hooks/useProducts'; 
 import { useCartStore } from './store/cartStore'; 
 import { useAuthStore } from './store/authStore';
@@ -24,7 +23,8 @@ function Home() {
         <div className="absolute inset-0 bg-black/40 z-10"></div>
         <div 
           className="absolute inset-0 bg-cover bg-center z-0"
-          style={{ backgroundImage: "url('/src/assets/sweter-think-less-copia-scaled-2560x1188.jpg')" }}
+          //style={{ backgroundImage: "url('/src/assets/sweter-think-less-copia-scaled-2560x1188.jpg')" }}
+          style={{ backgroundImage: "url('../src/assets/sweter-think-less-copia-scaled-2560x1188.jpg')" }}
         ></div>
 
         <div className="relative z-20 px-4 text-white">
