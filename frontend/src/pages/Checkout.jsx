@@ -95,7 +95,7 @@ const CheckoutForm = ({ totalGeneral, cartItems, userId, isFormValid, formData, 
       setIsProcessing(false);
     } else if (paymentIntent && paymentIntent.status === 'succeeded') {
       try {
-        const response = await fetch('http://localhost:3000/api/pedidos', {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/pedidos`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -216,7 +216,7 @@ export default function Checkout() {
 
   useEffect(() => {
     if (cartItems.length > 0) {
-      fetch('http://localhost:3000/api/pagos/crear-intencion', {
+      fetch(`${import.meta.env.VITE_API_URL}/api/pagos/crear-intencion`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: cartItems, montoTotal: totalGeneral }) 
       }).then(res => res.json()).then(data => { if (data.clientSecret) setClientSecret(data.clientSecret); }).catch(err => console.error(err));
     }

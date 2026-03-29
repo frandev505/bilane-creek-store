@@ -31,7 +31,7 @@ export default function CambiarPassword() {
     }
 
     try {
-      const response = await fetch(`http://localhost:3000/api/usuarios/${currentUser.id}/cambiar-password`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/usuarios/${currentUser.id}/cambiar-password`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         // 🔥 Enviamos la contraseña actual y la nueva con los nombres que espera el backend

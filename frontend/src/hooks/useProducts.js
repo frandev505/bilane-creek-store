@@ -7,7 +7,7 @@ export function useProducts() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/productos')
+    fetch(`${import.meta.env.VITE_API_URL}/api/productos`)
       .then((respuesta) => {
         if (!respuesta.ok) throw new Error('Error en la red');
         return respuesta.json();

@@ -28,8 +28,7 @@ export default function HistorialCompras() {
 
   useEffect(() => {
     if (user) {
-      console.log("Buscando pedidos para el usuario ID:", user.id); 
-      fetch(`http://localhost:3000/api/pedidos/usuario/${user.id}`)
+      fetch(`${import.meta.env.VITE_API_URL}/api/pedidos/usuario/${user.id}`)
         .then(async (res) => {
           if (!res.ok) throw new Error('Error al cargar el historial');
           return res.json();
@@ -105,7 +104,7 @@ export default function HistorialCompras() {
       // 🔥 SOPORTE PARA ENVIAR CORREO A INVITADO
       const correoDestino = user ? user.email : pedido.email_destino;
       if (correoDestino) {
-        await fetch('http://localhost:3000/api/pedidos/enviar-recibo', {
+        await fetch(`${import.meta.env.VITE_API_URL}/api/pedidos/enviar-recibo`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id_pedido: pedido.id_pedido, email_destino: correoDestino })

@@ -3,7 +3,7 @@ import { useAuthStore } from '../store/authStore';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable'; 
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = `${import.meta.env.VITE_API_URL}/api`;
 
 export default function AdminPanel() {
   const currentUser = useAuthStore(state => state.user);
